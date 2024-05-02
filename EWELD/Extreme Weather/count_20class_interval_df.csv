@@ -1,0 +1,21 @@
+EW,CT1,CT2,CT3
+01Low temperature,230,177,218
+02High temperature,679,477,741
+03High humidty,741,501,853
+04High heat and humidty,201,52,39
+05Damaging Wind Gusts,0,1,4
+06Very Damaging Wind Gusts,0,0,3
+07Violent Wind Gusts,0,0,1
+08Tropical Storm,27,28,30
+09Severe Tropical Storm,20,21,22
+10Typhoon,11,11,11
+11Strong Typhoon,4,4,4
+12Super Typhoon,0,0,0
+13Heavy Rain,32,0,7
+14Heavy Rain with Windy,2,0,0
+15Heavy Rain Shower,103,0,101
+16Heavy Rain Shower with Windy,5,0,32
+17Heavy T-Storm,176,0,97
+18Heavy T-Storm with Windy,44,0,29
+19Light Sleet,1,0,0
+20Light Sleet with Windy,0,0,1
