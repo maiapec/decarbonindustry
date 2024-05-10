@@ -10,6 +10,7 @@
 # component.gasConsumption
 # component.heatGeneration
 # component.capex
+# coponent.setOpex() à appeler depuis ici une fois le modèle résolu
 # component.CRF
 
 import cvxpy as cp
