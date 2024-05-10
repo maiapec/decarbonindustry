@@ -6,12 +6,14 @@
 # component.name
 # component._variables
 # component._constraints
-# component.powerConsumption
-# component.gasConsumption
-# component.heatGeneration
+# component.powerConsumption can be pos or neg
+# component.gasConsumption 
+# component.heatOutput can be pos or neg
 # component.capex
 # coponent.setOpex() à appeler depuis ici une fois le modèle résolu
 # component.CRF
+
+# TODO: check units
 
 import cvxpy as cp
 
@@ -32,7 +34,7 @@ class system:
         # system wide variables
         self.powerConsumption = None
         self.gasConsumption = None
-        self.heatGeneration = None
+        self.heatOutput = None
         self.annnualizedCapex = None
         self.powerOpex = None
         self.gasOpex = None
@@ -40,11 +42,14 @@ class system:
         self.powerEmissions = None
         self.gasEmissions = None
         self.totalEmissions = None
+        self.LCOE = None
+        self.LCOH = None
         # optimization model
         self._variables = None
         self._constraints = None
         self._objective = None
         self._model = None
+        self._status = None
         
 
     def setTimeIndex(self, timeIndex):
@@ -93,7 +98,7 @@ class system:
         self._constraints = []
         self.powerConsumption = self.powerLoad
         self.gasConsumption = 0
-        self.heatGeneration = 0
+        self.heatOutput = 0
         self.annnualizedCapex = 0
         # add components variables and constraints
         # add components power and gas consumption and heat generation
@@ -103,13 +108,13 @@ class system:
             self._constraints += component._constraints # Inner components constraints
             self.powerConsumption += component.powerConsumption
             self.gasConsumption += component.gasConsumption
-            self.heatGeneration += component.heatGeneration
+            self.heatOutput += component.heatOutput
             self.annnualizedCapex += component.capex*component.CRF
         # add system wide constraints
         self._constraints += [self.powerConsumption >= 0]
         self._constraints += [self.gasConsumption  >= 0]
-        self._constraints += [self.heatGeneration >= 0]
-        self._constraints += [self.heatGeneration == self.heatLoad]
+        self._constraints += [self.heatOutput >= 0]
+        self._constraints += [self.heatOutput == self.heatLoad]
         # add system wide variables
         self.powerOpex = cp.pos(self.powerConsumption) @ self.powerPrice
         self.gasOpex = cp.pos(self.gasConsumption) @ self.gasPrice
@@ -131,10 +136,27 @@ class system:
         # build model
         self._model = cp.Problem(self._objective, self._constraints)
     
+    def _computeMetrics(self):
+        raise NotImplementedError
+    
     def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False):
         self._build_model(objective, emissionsCap, costCap)
         self._model.solve(solver=solver, verbose=verbose)
+        self._status = self._model.status
+        for component in self.components:
+            component.setOpex()
+        self._computeMetrics()
         return self._model.status
+    
+    def describe(self):
+        raise NotImplementedError
+    
+    def plot(self):
+        raise NotImplementedError
+    
+    def compare(self):
+        raise NotImplementedError
+
     
 
 
