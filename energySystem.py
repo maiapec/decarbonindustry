@@ -1,7 +1,8 @@
 
 
 # from components : variables, inner constraints (like the state of charge and max delivered power, 
-#but not the must meet load constraint, that's a system wide constraint) and gas and power input (power input can be negative) + heat output
+# but not the must meet load constraint, that's a system wide constraint) and gas and power input
+# (power input can be negative) + heat output
 
 # component.name
 # component._variables
@@ -36,15 +37,17 @@ class system:
         self.powerConsumption = None
         self.gasConsumption = None
         self.heatOutput = None
-        self.annnualizedCapex = None
+        self.annualizedCapex = None
         self.powerOpex = None
         self.gasOpex = None
         self.totalCost = None
         self.powerEmissions = None
         self.gasEmissions = None
         self.totalEmissions = None
-        self.LCOE = None # TODO: how do we define LCOE / LCOH for a system?
-        self.LCOH = None # TODO: how do we define LCOE / LCOH for a system?
+        self.LCOE = None
+        self.LCOH = None
+        self.CIE = None # Carbon Intensity of Electricity
+        self.CIH = None # Carbon Intensity of Heat
         # optimization model
         self._variables = None
         self._constraints = None
@@ -100,7 +103,7 @@ class system:
         self.powerConsumption = self.powerLoad
         self.gasConsumption = 0
         self.heatOutput = 0
-        self.annnualizedCapex = 0
+        self.annualizedCapex = 0
         # add components variables and constraints
         # add components power and gas consumption and heat generation
         # add components capex
@@ -110,7 +113,7 @@ class system:
             self.powerConsumption += component.powerConsumption
             self.gasConsumption += component.gasConsumption
             self.heatOutput += component.heatOutput
-            self.annnualizedCapex += component.capex*component.CRF
+            self.annualizedCapex += component.capex*component.CRF
         # add system wide constraints
         self._constraints += [self.powerConsumption >= 0]
         self._constraints += [self.gasConsumption  >= 0]
@@ -119,7 +122,7 @@ class system:
         # add system wide variables
         self.powerOpex = cp.pos(self.powerConsumption) @ self.powerPrice
         self.gasOpex = cp.pos(self.gasConsumption) @ self.gasPrice
-        self.totalCost = self.powerOpex + self.gasOpex + self.annnualizedCapex
+        self.totalCost = self.powerOpex + self.gasOpex + self.annualizedCapex
         self.powerEmissions = cp.pos(self.powerConsumption) @ self.powerMarginalEmissions
         self.gasEmissions = cp.pos(self.gasConsumption) @ self.gasMarginalEmissions
         self.totalEmissions = self.powerEmissions + self.gasEmissions
@@ -138,6 +141,29 @@ class system:
         self._model = cp.Problem(self._objective, self._constraints)
     
     def _computeMetrics(self):
+        # problem : how to assign power and gas consumption to heat and electricity consumption
+        # especially if there is storage
+        # one approach
+        # 1. assign all gas cost to heat generation
+        # 2. compute alpha = annual power load (as power) / annual power consumption
+        #    assign alpha * power cost to power load and (1-alpha) * power cost to heat generation
+        # 3. LCOH = (gas cost + (1-alpha) * power cost) / annual heat load
+        # 4. LCOE = alpha * power cost / annual power load
+        # What about CAPEX ? could assign using the same method
+        # Not very satisfying, heat production device should only be assigned to heat
+        # But for now will do
+        # TODO: find a better way to assign costs
+        # Same approach for emissions
+        if self.status != "optimal":
+            print("Model not solved")
+        else:
+            alpha = self.powerLoad.sum() / self.powerConsumption.value.sum()
+            self.LCOH = (self.gasOpex.value + (1-alpha) * self.powerOpex.value + (1-alpha)*self.annualizedCapex) / self.heatLoad.sum()
+            self.LCOE = (alpha * self.powerOpex.value + alpha*self.annualizedCapex) / self.powerLoad.sum()
+            self.CIH = (self.gasEmissions.value + (1-alpha) * self.powerEmissions.value) / self.heatLoad.sum()
+            self.CIE = alpha * self.powerEmissions.value / self.powerLoad.sum()
+
+
         raise NotImplementedError
     
     def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False):
@@ -171,7 +197,7 @@ class system:
             print(f"Average power emissions: {self.powerEmissions.sum()} kgCO2/kWh")
             print(f"Average gas emissions: {self.gasEmissions.sum()} kgCO2/kWh")
             if self._status is "optimal":
-                print(f"Annualized capex: {self.annnualizedCapex.value} $")
+                print(f"Annualized capex: {self.annualizedCapex.value} $")
                 print(f"Power opex: {self.powerOpex.value} $")
                 print(f"Gas opex: {self.gasOpex.value} $")
                 print(f"Total power emissions: {self.powerEmissions.value.sum()} kgCO2")
