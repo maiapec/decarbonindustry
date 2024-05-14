@@ -159,7 +159,7 @@ class system:
 
 class component:
 
-    def __init__(self, name, parameters=None, variables=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None):
+    def __init__(self, name, parameters=None, variables=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
         self.name = name
         self._parameters = parameters
         self._variables = variables
@@ -168,22 +168,26 @@ class component:
         self.gasConsumption = gasConsumption
         self.heatOutput = heatOutput
         self.capex = capex
-        self.CRF = None
+        self.CRF = CRF
         self.opex = None
     
-    def describe(self):
-        raise NotImplementedError
+    def setOpex(self, powerPrice, gasPrice):
+        if self.opex is None:
+            pass
+        self.opex = cp.pos(self.powerConsumption) @ powerPrice + cp.pos(self.gasConsumption) @ gasPrice
     
     
 class NaturalGasFurnace(component):
 
-    def __init__(self, n_timesteps=None, dt=None, capacityPrice=None, eff=None):
+    def __init__(self, n_timesteps=None, dt=None, capacityPrice=None, eff=None, discRate=None, n_years=None):
         '''
         Inputs:
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
             - capacityPrice: price of capacity in $/kW
             - eff: efficiency of the furnace in %
+            - discRate: discount rate in %
+            - n_years: lifetime of the component in years
         '''
 
         name = 'NaturalGasFurnace'
@@ -202,8 +206,9 @@ class NaturalGasFurnace(component):
         gasConsumption = gasInput
         # Cost
         capex = capacity * capacityPrice # $
+        CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex)
+        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
         # Store specific attributes
         self.gasInput = gasInput
@@ -214,13 +219,15 @@ class NaturalGasFurnace(component):
 
 class HeatPump(component):
 
-    def __init__(self, n_timesteps=None, dt=None, COP=None, capacityPrice=None):
+    def __init__(self, n_timesteps=None, dt=None, COP=None, capacityPrice=None, discRate=None, n_years=None):
         '''
         Inputs:
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
             - COP: coefficient of performance of the heat pump
             - capacityPrice: price of capacity in $/kW
+            - discRate: discount rate in %
+            - n_years: lifetime of the component in years
         '''
 
         name = 'HeatPump'
@@ -239,8 +246,9 @@ class HeatPump(component):
         gasConsumption = 0
         # Cost
         capex = capacity * capacityPrice # $
+        CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex)
+        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
         # Store specific attributes
         self.powerInput = powerInput
@@ -250,7 +258,8 @@ class HeatPump(component):
 class Battery(component):
 
     def __init__(self, n_timesteps=None, dt=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
-                 maxDischargeRate=None, maxChargeRate=None, capacityPrice=None):
+                 maxDischargeRate=None, maxChargeRate=None, capacityPrice=None,
+                 discRate=None, n_years=None):
         '''
         Inputs:
             - n_timesteps: number of time steps
@@ -262,6 +271,8 @@ class Battery(component):
             - maxDischargeRate: maximum discharge rate in % of battery capacity
             - maxChargeRate: maximum charge rate in % of battery capacity
             - capacityPrice: price of capacity in $/kWh
+            - discRate: discount rate in %
+            - n_years: lifetime of the component in years
         NB: State of charge soc is in kWh.
         '''
 
@@ -290,8 +301,9 @@ class Battery(component):
         heatOutput = 0
         # Cost
         capex = energy_capacity * capacityPrice # $
+        CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex)
+        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
         # Store specific attributes
         self.powerInput = powerInput
@@ -302,7 +314,8 @@ class Battery(component):
 class ThermalStorage(component):
 
     def __init__(self, n_timesteps=None, dt=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
-                 maxDischargeRate=None, maxChargeRate=None, capacityPrice=None, lossRate=None):
+                 maxDischargeRate=None, maxChargeRate=None, capacityPrice=None, lossRate=None,
+                 discRate=None, n_years=None):
         '''
         Inputs:
             - n_timesteps: number of time steps
@@ -315,6 +328,8 @@ class ThermalStorage(component):
             - maxChargeRate: maximum charge rate in % of battery capacity
             - capacityPrice: price of capacity in $/kWh
             - lossRate: rate of energy loss per hour in % of battery capacity
+            - discRate: discount rate in %
+            - n_years: lifetime of the component in years
         NB: State of charge soc is in kWh.
         '''
 
@@ -343,8 +358,9 @@ class ThermalStorage(component):
         heatOutput = - heatInput # load added when it charges (heatInput positive), load avoided when it discharges (heatInput negative)
         # Cost
         capex = energy_capacity * capacityPrice # $
+        CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex)
+        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
         # TODO: check if loss rate in % of capacity or current energy stored.
 
@@ -356,13 +372,15 @@ class ThermalStorage(component):
 
 class PVsystem(component):
 
-    def __init__(self, n_timesteps=None, dt=None, pvLoad=None, capacityPrice=None):
+    def __init__(self, n_timesteps=None, dt=None, pvLoad=None, capacityPrice=None,  discRate=None, n_years=None):
         '''
         Inputs:
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
             - pvLoad: time-indexed electricity available from the PV system, in % of the PV capacity
             - capacityPrice: price of capacity in $/kW
+            - discRate: discount rate in %
+            - n_years: lifetime of the component in years
         '''
 
         name = 'PVsystem'
@@ -381,8 +399,9 @@ class PVsystem(component):
         heatOutput = 0
         # Cost
         capex = capacity * capacityPrice # $
+        CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex)
+        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
         # Store specific attributes
         self.capacity = capacity
