@@ -10,8 +10,9 @@
 # component.gasConsumption 
 # component.heatOutput can be pos or neg
 # component.capex
-# coponent.setOpex() à appeler depuis ici une fois le modèle résolu
+# component.setOpex() à appeler depuis ici une fois le modèle résolu
 # component.CRF
+# component.describe()
 
 # TODO: check units
 
@@ -42,8 +43,8 @@ class system:
         self.powerEmissions = None
         self.gasEmissions = None
         self.totalEmissions = None
-        self.LCOE = None
-        self.LCOH = None
+        self.LCOE = None # TODO: how do we define LCOE / LCOH for a system?
+        self.LCOH = None # TODO: how do we define LCOE / LCOH for a system?
         # optimization model
         self._variables = None
         self._constraints = None
@@ -148,8 +149,33 @@ class system:
         self._computeMetrics()
         return self._model.status
     
-    def describe(self):
-        raise NotImplementedError
+    def describe(self, detailed=False):
+        print(f"System: {self.name}")
+        print(f"{len(self.components)} components")
+        for c in self.components:
+            c.describe()
+        print(f"Status: {self._status}")
+        if self._status is "optimal":
+            print(f"Total power consumption: {self.powerConsumption.value.sum()} kWh")
+            print(f"Total gas consumption: {self.gasConsumption.value.sum()} kWh")
+            print(f"Total cost: {self.totalCost.value} $")
+            print(f"Total emissions: {self.totalEmissions.value} kgCO2")
+            print(f"LCOE: {self.LCOE} $/kWh")
+            print(f"LCOH: {self.LCOH} $/kWh")
+        if detailed:
+            print(f"Runs from {self.timeIndex[0]} to {self.timeIndex[-1]}")
+            print(f"Annual power load: {self.powerLoad.sum()} kWh")
+            print(f"Annual heat load: {self.heatLoad.sum()} kWh")
+            print(f"Average power price: {self.powerPrice.sum()} $/kWh")
+            print(f"Average gas price: {self.gasPrice.sum()} $/kWh")
+            print(f"Average power emissions: {self.powerEmissions.sum()} kgCO2/kWh")
+            print(f"Average gas emissions: {self.gasEmissions.sum()} kgCO2/kWh")
+            if self._status is "optimal":
+                print(f"Annualized capex: {self.annnualizedCapex.value} $")
+                print(f"Power opex: {self.powerOpex.value} $")
+                print(f"Gas opex: {self.gasOpex.value} $")
+                print(f"Total power emissions: {self.powerEmissions.value.sum()} kgCO2")
+                print(f"Total gas emissions: {self.gasEmissions.value.sum()} kgCO2")
     
     def plot(self):
         raise NotImplementedError
