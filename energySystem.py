@@ -205,6 +205,10 @@ class NaturalGasFurnace(component):
 
         super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex)
 
+        # Store specific attributes
+        self.gasInput = gasInput
+        self.capacity = capacity
+
     # Check if gas consumption is in kWh or in m3.
 
 
@@ -237,6 +241,10 @@ class HeatPump(component):
         capex = capacity * capacityPrice # $
 
         super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex)
+
+        # Store specific attributes
+        self.powerInput = powerInput
+        self.capacity = capacity
 
 
 class Battery(component):
@@ -285,7 +293,10 @@ class Battery(component):
 
         super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex)
 
-        # TODO: check if need another variable for the powerAvailable??
+        # Store specific attributes
+        self.powerInput = powerInput
+        self.soc = soc
+        self.energy_capacity = energy_capacity
 
 
 class ThermalStorage(component):
@@ -337,6 +348,11 @@ class ThermalStorage(component):
 
         # TODO: check if loss rate in % of capacity or current energy stored.
 
+        # Store specific attributes
+        self.heatInput = heatInput
+        self.soc = soc
+        self.energy_capacity = energy_capacity
+
 
 class PVsystem(component):
 
@@ -367,5 +383,8 @@ class PVsystem(component):
         capex = capacity * capacityPrice # $
 
         super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex)
+
+        # Store specific attributes
+        self.capacity = capacity
 
     # Question: consider PV to be sold back to the grid?
