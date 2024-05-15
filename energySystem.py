@@ -208,7 +208,10 @@ class system:
         raise NotImplementedError
 
 
-# TODO: for the components add an option to set the parameters automatically from default values ?
+# TODO: for the components add an option to set the parameters automatically from default values 
+# TODO: for the components describe the optimal values of the variables
+# TODO: find a way to access the components variables from a name ... Make a dict indstead of a list ???
+
 class component:
 
     def __init__(self, name, parameters=None, variables=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
