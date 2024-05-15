@@ -1,24 +1,21 @@
 
-# from components : variables, inner constraints (like the state of charge and max delivered power, 
-# but not the must meet load constraint, that's a system wide constraint) and gas and power input
-# (power input can be negative) + heat output
-
-# component.name
-# component._variables
-# component._constraints
-# component.powerConsumption can be pos or neg
-# component.gasConsumption 
-# component.heatOutput can be pos or neg
-# component.capex
-# component.setOpex() à appeler depuis ici une fois le modèle résolu
-# component.CRF
-# component.describe()
+# Component.describe()
 
 # TODO: check units
+# TODO: when adding components to a system, could we infer some parameters (like discount rate, ntimesteps, etc)
 
 import cvxpy as cp
+import numpy as np
 
-class system:
+def getValue(variable):
+    if isinstance(variable, cp.Variable):
+        return variable.value
+    elif isinstance(variable, cp.Expression):
+        return variable.value
+    else:
+        return variable
+
+class System:
 
     def __init__(self, name, components=None, timeIndex=None, powerLoad=None, heatLoad=None, powerPrice=None, gasPrice=None, powerMarginalEmissions=None, gasMarginalEmissions=None):
         self.name = name
@@ -109,12 +106,11 @@ class system:
         for component in self.components:
             self._variables += component._variables
             self._constraints += component._constraints # Inner components constraints
-            self.powerConsumption += component.powerConsumption
-            self.gasConsumption += component.gasConsumption
-            self.heatOutput += component.heatOutput
-            self.annualizedCapex += component.capex*component.CRF
+            self.powerConsumption = self.powerConsumption + component.powerConsumption
+            self.gasConsumption = self.gasConsumption + component.gasConsumption
+            self.heatOutput = self.heatOutput + component.heatOutput
+            self.annualizedCapex = self.annualizedCapex + component.capex*component.CRF
         # add system wide constraints
-        self._constraints += [self.powerConsumption >= 0] # power load is met
         self._constraints += [self.gasConsumption  >= 0]
         self._constraints += [self.heatOutput >= 0]
         self._constraints += [self.heatOutput == self.heatLoad] # heat load is met
@@ -151,56 +147,60 @@ class system:
         # What about CAPEX ? could assign using the same method
         # Not very satisfying, heat production device should only be assigned to heat
         # But for now will do
-        # TODO: find a better way to assign costs
+        # TODO: find a better way to assign costs (CAPEX)
         # Same approach for emissions
-        if self.status != "optimal":
+        if self._status != "optimal":
             print("Model not solved")
         else:
-            alpha = self.powerLoad.sum() / self.powerConsumption.value.sum()
+            pwrCons = getValue(self.powerConsumption)
+            alpha = self.powerLoad.sum() / pwrCons.sum()
             self.LCOH = (self.gasOpex.value + (1-alpha) * self.powerOpex.value + (1-alpha)*self.annualizedCapex) / self.heatLoad.sum()
             self.LCOE = (alpha * self.powerOpex.value + alpha*self.annualizedCapex) / self.powerLoad.sum()
             self.CIH = (self.gasEmissions.value + (1-alpha) * self.powerEmissions.value) / self.heatLoad.sum()
             self.CIE = alpha * self.powerEmissions.value / self.powerLoad.sum()
-
-
-        raise NotImplementedError
     
     def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False):
         self._build_model(objective, emissionsCap, costCap)
         self._model.solve(solver=solver, verbose=verbose)
-        self._status = self._model.status
+        self._status = self._model._status
         for component in self.components:
-            component.setOpex()
+            component.setOpex(self.powerPrice, self.gasPrice)
         self._computeMetrics()
-        return self._model.status
+        return self._model._status
     
     def describe(self, detailed=False):
         print(f"System: {self.name}")
-        print(f"{len(self.components)} components")
+        print(f"{len(self.components)} component(s)")
         for c in self.components:
             c.describe()
         print(f"Status: {self._status}")
-        if self._status is "optimal":
-            print(f"Total power consumption: {self.powerConsumption.value.sum()} kWh")
-            print(f"Total gas consumption: {self.gasConsumption.value.sum()} kWh")
-            print(f"Total cost: {self.totalCost.value} $")
-            print(f"Total emissions: {self.totalEmissions.value} kgCO2")
-            print(f"LCOE: {self.LCOE} $/kWh")
-            print(f"LCOH: {self.LCOH} $/kWh")
+        print("")
+        if self._status == "optimal":
+            pwrCons = getValue(self.powerConsumption)
+            gasCons = getValue(self.gasConsumption)
+            print(f"Annual power consumption: {np.round(pwrCons.sum()/1000)} MWh")
+            print(f"Annual gas consumption: {np.round(gasCons.sum()/1000)} kWh")
+            print(f"Annual cost: {np.round(self.totalCost.value/1e6, 3)} M$")
+            print(f"Annual emissions: {np.round(self.totalEmissions.value/1e6, 2)} MtonCO2")
+            print(f"LCOE (Electricity): {np.round(self.LCOE.value, 3)} $/kWh")
+            print(f"LCOH (Heat): {np.round(self.LCOH.value, 3)} $/kWh")
+            print(f"Carbon Intensity of Electricity: {np.round(self.CIE, 3)} kgCO2/kWhe")
+            print(f"Carbon Intensity of Heat: {np.round(self.CIH, 3)} kgCO2/kWhth")
+        print("")
         if detailed:
             print(f"Runs from {self.timeIndex[0]} to {self.timeIndex[-1]}")
-            print(f"Annual power load: {self.powerLoad.sum()} kWh")
-            print(f"Annual heat load: {self.heatLoad.sum()} kWh")
-            print(f"Average power price: {self.powerPrice.sum()} $/kWh")
-            print(f"Average gas price: {self.gasPrice.sum()} $/kWh")
-            print(f"Average power emissions: {self.powerEmissions.sum()} kgCO2/kWh")
-            print(f"Average gas emissions: {self.gasEmissions.sum()} kgCO2/kWh")
-            if self._status is "optimal":
-                print(f"Annualized capex: {self.annualizedCapex.value} $")
-                print(f"Power opex: {self.powerOpex.value} $")
-                print(f"Gas opex: {self.gasOpex.value} $")
-                print(f"Total power emissions: {self.powerEmissions.value.sum()} kgCO2")
-                print(f"Total gas emissions: {self.gasEmissions.value.sum()} kgCO2")
+            print(f"Annual power load: {np.round(self.powerLoad.sum()/1000)} MWh")
+            print(f"Annual heat load: {np.round(self.heatLoad.sum()/1000)} MWh")
+            print(f"Average supply power price: {np.round(self.powerPrice.mean(), 3)} $/kWh")
+            print(f"Average supply gas price: {np.round(self.gasPrice.mean(), 3)} $/kWh")
+            print(f"Average supply power emissions: {np.round(self.powerMarginalEmissions.mean(), 3)} kgCO2/kWhe")
+            print(f"Average supply gas emissions: {np.round(self.gasMarginalEmissions.mean(), 3)} kgCO2/kWhth")
+            if self._status == "optimal":
+                print(f"Annualized capex: {np.round(self.annualizedCapex.value/1e6, 3)} M$")
+                print(f"Power opex: {np.round(self.powerOpex.value/1e6, 3)} M$")
+                print(f"Gas opex: {np.round(self.gasOpex.value/1e6, 3)} M$")
+                print(f"Total power emissions: {np.round(self.powerEmissions.value.sum()/1e6, 2)} MtonCO2")
+                print(f"Total gas emissions: {np.round(self.gasEmissions.value.sum()/1e6, 2)} MtonCO2")
     
     def plot(self):
         raise NotImplementedError
@@ -209,7 +209,12 @@ class system:
         raise NotImplementedError
 
 
-class component:
+# TODO: for the components add an option to set the parameters automatically from default values 
+# TODO: for the components describe the optimal values of the variables
+# TODO: make a dict of variables
+# TODO: I changed the orders of the paraemters in the __init__ of the components, check the function comments
+
+class Component:
 
     def __init__(self, name, parameters=None, variables=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
         self.name = name
@@ -223,15 +228,23 @@ class component:
         self.CRF = CRF
         self.opex = None
     
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+    
     def setOpex(self, powerPrice, gasPrice):
         if self.opex is None:
             pass
-        self.opex = cp.pos(self.powerConsumption) @ powerPrice + cp.pos(self.gasConsumption) @ gasPrice
+        pwrCons = getValue(self.powerConsumption)
+        gasCons = getValue(self.gasConsumption)
+        self.opex = pwrCons @ powerPrice + gasCons @ gasPrice
     
     
-class NaturalGasFurnace(component):
+class NaturalGasFurnace(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, capacityPrice=None, eff=None, discRate=None, n_years=None):
+    def __init__(self, n_timesteps=None, dt=None, eff=None, capacityPrice=None, discRate=None, n_years=None):
         '''
         Inputs:
             - n_timesteps: number of time steps
@@ -239,7 +252,7 @@ class NaturalGasFurnace(component):
             - capacityPrice: price of capacity in $/kW
             - eff: efficiency of the furnace in %
             - discRate: discount rate in %
-            - n_years: lifetime of the component in years
+            - n_years: lifetime of the Component in years
         '''
 
         name = 'NaturalGasFurnace'
@@ -254,7 +267,7 @@ class NaturalGasFurnace(component):
         # Constraints
         constraints = [heatOutput <= capacity*dt]
         # Consumption
-        powerConsumption = 0
+        powerConsumption = np.zeros(n_timesteps)
         gasConsumption = gasInput
         # Cost
         capex = capacity * capacityPrice # $
@@ -266,10 +279,15 @@ class NaturalGasFurnace(component):
         self.gasInput = gasInput
         self.capacity = capacity
 
-    # Check if gas consumption is in kWh or in m3.
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal capacity: {np.round(self.capacity.value)} kW")
 
 
-class HeatPump(component):
+class HeatPump(Component):
 
     def __init__(self, n_timesteps=None, dt=None, COP=None, capacityPrice=None, discRate=None, n_years=None):
         '''
@@ -295,7 +313,7 @@ class HeatPump(component):
         constraints = [heatOutput <= capacity * dt]
         # Consumption
         powerConsumption = powerInput
-        gasConsumption = 0
+        gasConsumption = np.zeros(n_timesteps)
         # Cost
         capex = capacity * capacityPrice # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
@@ -306,11 +324,18 @@ class HeatPump(component):
         self.powerInput = powerInput
         self.capacity = capacity
 
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal capacity: {np.round(self.capacity.value)} kW")
 
-class Battery(component):
 
-    def __init__(self, n_timesteps=None, dt=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
-                 maxDischargeRate=None, maxChargeRate=None, capacityPrice=None,
+class Battery(Component):
+
+    def __init__(self, n_timesteps=None, dt=None, maxChargeRate=None, capacityPrice=None,
+                 maxDischargeRate=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
                  discRate=None, n_years=None):
         '''
         Inputs:
@@ -349,8 +374,8 @@ class Battery(component):
             constraints += [soc[t+1] == soc[t] + powerInput[t]]
         # Consumption
         powerConsumption = powerInput # positive consumption (cost added) when it charges, negative (cost avoided) when it discharges
-        gasConsumption = 0
-        heatOutput = 0
+        gasConsumption = np.zeros(n_timesteps)
+        heatOutput = np.zeros(n_timesteps)
         # Cost
         capex = energy_capacity * capacityPrice # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
@@ -362,8 +387,15 @@ class Battery(component):
         self.soc = soc
         self.energy_capacity = energy_capacity
 
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal capacity: {np.round(self.energy_capacity.value)} kWh")
 
-class ThermalStorage(component):
+
+class ThermalStorage(Component):
 
     def __init__(self, n_timesteps=None, dt=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
                  maxDischargeRate=None, maxChargeRate=None, capacityPrice=None, lossRate=None,
@@ -405,8 +437,8 @@ class ThermalStorage(component):
         for t in range(n_timesteps-1):
             constraints += [soc[t+1] == soc[t] + heatInput[t] - lossRate * dt * energy_capacity]
         # Consumption
-        powerConsumption = 0
-        gasConsumption = 0
+        powerConsumption = np.zeros(n_timesteps)
+        gasConsumption = np.zeros(n_timesteps)
         heatOutput = - heatInput # load added when it charges (heatInput positive), load avoided when it discharges (heatInput negative)
         # Cost
         capex = energy_capacity * capacityPrice # $
@@ -422,7 +454,7 @@ class ThermalStorage(component):
         self.energy_capacity = energy_capacity
 
 
-class PVsystem(component):
+class PVsystem(Component):
 
     def __init__(self, n_timesteps=None, dt=None, pvLoad=None, capacityPrice=None,  discRate=None, n_years=None):
         '''
