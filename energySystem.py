@@ -211,7 +211,8 @@ class System:
 
 # TODO: for the components add an option to set the parameters automatically from default values 
 # TODO: for the components describe the optimal values of the variables
-# TODO: make a list of components
+# TODO: make a dict of variables
+# TODO: I changed the orders of the paraemters in the __init__ of the components, check the function comments
 
 class Component:
 
@@ -243,7 +244,7 @@ class Component:
     
 class NaturalGasFurnace(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, capacityPrice=None, eff=None, discRate=None, n_years=None):
+    def __init__(self, n_timesteps=None, dt=None, eff=None, capacityPrice=None, discRate=None, n_years=None):
         '''
         Inputs:
             - n_timesteps: number of time steps
@@ -333,8 +334,8 @@ class HeatPump(Component):
 
 class Battery(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
-                 maxDischargeRate=None, maxChargeRate=None, capacityPrice=None,
+    def __init__(self, n_timesteps=None, dt=None, maxChargeRate=None, capacityPrice=None,
+                 maxDischargeRate=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
                  discRate=None, n_years=None):
         '''
         Inputs:
@@ -385,6 +386,13 @@ class Battery(Component):
         self.powerInput = powerInput
         self.soc = soc
         self.energy_capacity = energy_capacity
+
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal capacity: {np.round(self.energy_capacity.value)} kWh")
 
 
 class ThermalStorage(Component):
