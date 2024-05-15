@@ -1,8 +1,21 @@
 
 # Component.describe()
 
+### System
 # TODO: check units
+# TODO: find a better way to assign costs (CAPEX)
+# TODO: plots
 # TODO: when adding components to a system, could we infer some parameters (like discount rate, ntimesteps, etc)
+# TODO: be able to delete components from a system
+
+### Component
+# TODO: add efficiency to the battery and thermal storage
+# TODO: make a dict of variables
+# TODO: plots
+# TODO: implement detailed or not in the describe method for components
+# TODO: I changed the orders of the parameters in the __init__ of the components, check the string desciption (especially battery and thermal storage)
+# TODO: add an option to set the parameters automatically from default values 
+
 
 import cvxpy as cp
 import numpy as np
@@ -147,7 +160,6 @@ class System:
         # What about CAPEX ? could assign using the same method
         # Not very satisfying, heat production device should only be assigned to heat
         # But for now will do
-        # TODO: find a better way to assign costs (CAPEX)
         # Same approach for emissions
         if self._status != "optimal":
             print("Model not solved")
@@ -207,14 +219,6 @@ class System:
     
     def compare(self):
         raise NotImplementedError
-
-
-# TODO: add efficiency to the battery and thermal storage
-# TODO: for the components add an option to set the parameters automatically from default values 
-# TODO: for the components describe the optimal values of the variables
-# TODO: make a dict of variables
-# TODO: implement detailed or not in the describe method for components
-# TODO: I changed the orders of the paraemters in the __init__ of the components, check the string desciption (especially battery and thermal storage)
 
 class Component:
 
@@ -338,7 +342,7 @@ class Battery(Component):
 
     def __init__(self, n_timesteps=None, dt=None, maxChargeRate=None, capacityPrice=None,
                  maxDischargeRate=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
-                 discRate=None, n_years=None):
+                 discRate=None, n_years=None, name="Battery"):
         '''
         Inputs:
             - n_timesteps: number of time steps
@@ -367,7 +371,6 @@ class Battery(Component):
             if socFinal is None:
                 socFinal = 0.5
 
-        name = 'Battery'
         # Parameters
         parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal, 
                       'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice}
@@ -409,10 +412,11 @@ class Battery(Component):
         print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self.energy_capacity.value)} kW")
 
 
+# Should we optimize for C rate
 class ThermalStorage(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
-                 maxDischargeRate=None, maxChargeRate=None, capacityPrice=None, lossRate=None,
+    def __init__(self, n_timesteps=None, dt=None, maxChargeRate=None, lossRate=None, capacityPrice=None,
+                 maxDischargeRate=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
                  discRate=None, n_years=None):
         '''
         Inputs:
@@ -431,13 +435,26 @@ class ThermalStorage(Component):
         NB: State of charge soc is in kWh.
         '''
 
+        if maxChargeRate is not None:
+            if maxDischargeRate is None:
+                maxDischargeRate = maxChargeRate
+            if socMin is None:
+                socMin = 0
+            if socMax is None:
+                socMax = 1
+            if socInitial is None:
+                socInitial = 0.5
+            if socFinal is None:
+                socFinal = 0.5
+
         name = 'ThermalStorage'
         # Parameters
         parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal, 
                       'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice, 'lossRate': lossRate}
+                      
         # Variables
         heatInput = cp.Variable(n_timesteps) # kWh, positive when it charges, negative when it discharges
-        soc = cp.Variable(n_timesteps, nonneg=True) # kWh
+        soc = cp.Variable(n_timesteps + 1, nonneg=True) # kWh
         energy_capacity = cp.Variable(nonneg=True) # kWh
         variables = [heatInput, soc, energy_capacity]
         # Constraints
@@ -448,8 +465,7 @@ class ThermalStorage(Component):
         constraints += [soc <= socMax * energy_capacity]
         constraints += [soc[0] == socInitial * energy_capacity]
         constraints += [soc[-1] == socFinal * energy_capacity]
-        for t in range(n_timesteps-1):
-            constraints += [soc[t+1] == soc[t] + heatInput[t] - lossRate * dt * energy_capacity]
+        constraints += [soc[1:] == soc[:-1]*(1 - dt*lossRate) + heatInput]
         # Consumption
         powerConsumption = np.zeros(n_timesteps)
         gasConsumption = np.zeros(n_timesteps)
@@ -460,12 +476,21 @@ class ThermalStorage(Component):
 
         super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
-        # TODO: check if loss rate in % of capacity or current energy stored.
+        # TODO: Maya : check if loss rate in % of capacity or current energy stored.
+        # Aramis : I think it is in % of current energy stored, (because it depends on the temperature of the storage, which is related to the energy stored)
 
         # Store specific attributes
         self.heatInput = heatInput
         self.soc = soc
         self.energy_capacity = energy_capacity
+    
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal energy capacity: {np.round(self.energy_capacity.value)} kWh")
+        print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self.energy_capacity.value)} kW")
 
 
 class PVsystem(Component):
