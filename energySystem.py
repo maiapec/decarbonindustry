@@ -1,8 +1,7 @@
 
-# component.describe()
+# Component.describe()
 
 # TODO: check units
-# TODO: naming convention for classes (Caps or no caps)
 # TODO: when adding components to a system, could we infer some parameters (like discount rate, ntimesteps, etc)
 
 import cvxpy as cp
@@ -11,10 +10,12 @@ import numpy as np
 def getValue(variable):
     if isinstance(variable, cp.Variable):
         return variable.value
+    elif isinstance(variable, cp.Expression):
+        return variable.value
     else:
         return variable
 
-class system:
+class System:
 
     def __init__(self, name, components=None, timeIndex=None, powerLoad=None, heatLoad=None, powerPrice=None, gasPrice=None, powerMarginalEmissions=None, gasMarginalEmissions=None):
         self.name = name
@@ -105,10 +106,10 @@ class system:
         for component in self.components:
             self._variables += component._variables
             self._constraints += component._constraints # Inner components constraints
-            self.powerConsumption += component.powerConsumption
-            self.gasConsumption += component.gasConsumption
-            self.heatOutput += component.heatOutput
-            self.annualizedCapex += component.capex*component.CRF
+            self.powerConsumption = self.powerConsumption + component.powerConsumption
+            self.gasConsumption = self.gasConsumption + component.gasConsumption
+            self.heatOutput = self.heatOutput + component.heatOutput
+            self.annualizedCapex = self.annualizedCapex + component.capex*component.CRF
         # add system wide constraints
         self._constraints += [self.gasConsumption  >= 0]
         self._constraints += [self.heatOutput >= 0]
@@ -146,7 +147,7 @@ class system:
         # What about CAPEX ? could assign using the same method
         # Not very satisfying, heat production device should only be assigned to heat
         # But for now will do
-        # TODO: find a better way to assign costs
+        # TODO: find a better way to assign costs (CAPEX)
         # Same approach for emissions
         if self._status != "optimal":
             print("Model not solved")
@@ -210,9 +211,9 @@ class system:
 
 # TODO: for the components add an option to set the parameters automatically from default values 
 # TODO: for the components describe the optimal values of the variables
-# TODO: find a way to access the components variables from a name ... Make a dict indstead of a list ???
+# TODO: make a list of components
 
-class component:
+class Component:
 
     def __init__(self, name, parameters=None, variables=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
         self.name = name
@@ -238,11 +239,9 @@ class component:
         pwrCons = getValue(self.powerConsumption)
         gasCons = getValue(self.gasConsumption)
         self.opex = pwrCons @ powerPrice + gasCons @ gasPrice
-        # TODO: Removed cp.pos for each components because of batteries 
-        # Should we keep it ?
     
     
-class NaturalGasFurnace(component):
+class NaturalGasFurnace(Component):
 
     def __init__(self, n_timesteps=None, dt=None, capacityPrice=None, eff=None, discRate=None, n_years=None):
         '''
@@ -252,7 +251,7 @@ class NaturalGasFurnace(component):
             - capacityPrice: price of capacity in $/kW
             - eff: efficiency of the furnace in %
             - discRate: discount rate in %
-            - n_years: lifetime of the component in years
+            - n_years: lifetime of the Component in years
         '''
 
         name = 'NaturalGasFurnace'
@@ -279,10 +278,15 @@ class NaturalGasFurnace(component):
         self.gasInput = gasInput
         self.capacity = capacity
 
-    # Maia : Check if gas consumption is in kWh or in m3. Aramis : It is in kwh
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal capacity: {np.round(self.capacity.value)} kW")
 
 
-class HeatPump(component):
+class HeatPump(Component):
 
     def __init__(self, n_timesteps=None, dt=None, COP=None, capacityPrice=None, discRate=None, n_years=None):
         '''
@@ -319,8 +323,15 @@ class HeatPump(component):
         self.powerInput = powerInput
         self.capacity = capacity
 
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal capacity: {np.round(self.capacity.value)} kW")
 
-class Battery(component):
+
+class Battery(Component):
 
     def __init__(self, n_timesteps=None, dt=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
                  maxDischargeRate=None, maxChargeRate=None, capacityPrice=None,
@@ -376,7 +387,7 @@ class Battery(component):
         self.energy_capacity = energy_capacity
 
 
-class ThermalStorage(component):
+class ThermalStorage(Component):
 
     def __init__(self, n_timesteps=None, dt=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
                  maxDischargeRate=None, maxChargeRate=None, capacityPrice=None, lossRate=None,
@@ -435,7 +446,7 @@ class ThermalStorage(component):
         self.energy_capacity = energy_capacity
 
 
-class PVsystem(component):
+class PVsystem(Component):
 
     def __init__(self, n_timesteps=None, dt=None, pvLoad=None, capacityPrice=None,  discRate=None, n_years=None):
         '''
