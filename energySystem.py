@@ -1,22 +1,12 @@
 
-# from components : variables, inner constraints (like the state of charge and max delivered power, 
-# but not the must meet load constraint, that's a system wide constraint) and gas and power input
-# (power input can be negative) + heat output
-
-# component.name
-# component._variables
-# component._constraints
-# component.powerConsumption can be pos or neg
-# component.gasConsumption 
-# component.heatOutput can be pos or neg
-# component.capex
-# component.setOpex() à appeler depuis ici une fois le modèle résolu
-# component.CRF
 # component.describe()
 
 # TODO: check units
+# TODO: naming convention for classes (Caps or no caps)
+# TODO: when adding components to a system, could we infer some parameters (like discount rate, ntimesteps, etc)
 
 import cvxpy as cp
+import numpy as np
 
 class system:
 
@@ -161,26 +151,24 @@ class system:
             self.LCOE = (alpha * self.powerOpex.value + alpha*self.annualizedCapex) / self.powerLoad.sum()
             self.CIH = (self.gasEmissions.value + (1-alpha) * self.powerEmissions.value) / self.heatLoad.sum()
             self.CIE = alpha * self.powerEmissions.value / self.powerLoad.sum()
-
-
-        raise NotImplementedError
     
     def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False):
         self._build_model(objective, emissionsCap, costCap)
         self._model.solve(solver=solver, verbose=verbose)
         self._status = self._model.status
         for component in self.components:
-            component.setOpex()
+            component.setOpex(self.powerPrice, self.gasPrice)
         self._computeMetrics()
         return self._model.status
     
     def describe(self, detailed=False):
         print(f"System: {self.name}")
-        print(f"{len(self.components)} components")
+        print(f"{len(self.components)} component(s)")
         for c in self.components:
             c.describe()
         print(f"Status: {self._status}")
-        if self._status is "optimal":
+        print("")
+        if self._status == "optimal":
             print(f"Total power consumption: {self.powerConsumption.value.sum()} kWh")
             print(f"Total gas consumption: {self.gasConsumption.value.sum()} kWh")
             print(f"Total cost: {self.totalCost.value} $")
@@ -189,13 +177,13 @@ class system:
             print(f"LCOH: {self.LCOH} $/kWh")
         if detailed:
             print(f"Runs from {self.timeIndex[0]} to {self.timeIndex[-1]}")
-            print(f"Annual power load: {self.powerLoad.sum()} kWh")
-            print(f"Annual heat load: {self.heatLoad.sum()} kWh")
-            print(f"Average power price: {self.powerPrice.sum()} $/kWh")
-            print(f"Average gas price: {self.gasPrice.sum()} $/kWh")
-            print(f"Average power emissions: {self.powerEmissions.sum()} kgCO2/kWh")
-            print(f"Average gas emissions: {self.gasEmissions.sum()} kgCO2/kWh")
-            if self._status is "optimal":
+            print(f"Annual power load: {np.round(self.powerLoad.sum()/1000)} MWh")
+            print(f"Annual heat load: {np.round(self.heatLoad.sum()/1000)} MWh")
+            print(f"Average supply power price: {np.round(self.powerPrice.mean(), 3)} $/kWh")
+            print(f"Average supply gas price: {np.round(self.gasPrice.mean(), 3)} $/kWh")
+            print(f"Average supply power emissions: {np.round(self.powerMarginalEmissions.mean(), 3)} kgCO2/kWh")
+            print(f"Average supply gas emissions: {np.round(self.gasMarginalEmissions.mean(), 3)} kgCO2/kWh")
+            if self._status == "optimal":
                 print(f"Annualized capex: {self.annualizedCapex.value} $")
                 print(f"Power opex: {self.powerOpex.value} $")
                 print(f"Gas opex: {self.gasOpex.value} $")
@@ -209,6 +197,7 @@ class system:
         raise NotImplementedError
 
 
+# TODO: for the components add an option to set the parameters automatically from default values ?
 class component:
 
     def __init__(self, name, parameters=None, variables=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
@@ -223,10 +212,17 @@ class component:
         self.CRF = CRF
         self.opex = None
     
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+    
     def setOpex(self, powerPrice, gasPrice):
         if self.opex is None:
             pass
-        self.opex = cp.pos(self.powerConsumption) @ powerPrice + cp.pos(self.gasConsumption) @ gasPrice
+        self.opex = self.powerConsumption.value @ powerPrice + self.gasConsumption.value @ gasPrice # TODO: Removed cp.pos for each components because of batteries 
+        # Should we keep it ?
     
     
 class NaturalGasFurnace(component):
@@ -266,7 +262,7 @@ class NaturalGasFurnace(component):
         self.gasInput = gasInput
         self.capacity = capacity
 
-    # Check if gas consumption is in kWh or in m3.
+    # Maia : Check if gas consumption is in kWh or in m3. Aramis : It is in kwh
 
 
 class HeatPump(component):
