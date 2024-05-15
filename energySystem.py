@@ -209,10 +209,12 @@ class System:
         raise NotImplementedError
 
 
+# TODO: add efficiency to the battery and thermal storage
 # TODO: for the components add an option to set the parameters automatically from default values 
 # TODO: for the components describe the optimal values of the variables
 # TODO: make a dict of variables
-# TODO: I changed the orders of the paraemters in the __init__ of the components, check the function comments
+# TODO: implement detailed or not in the describe method for components
+# TODO: I changed the orders of the paraemters in the __init__ of the components, check the string desciption (especially battery and thermal storage)
 
 class Component:
 
@@ -353,13 +355,25 @@ class Battery(Component):
         NB: State of charge soc is in kWh.
         '''
 
+        if maxChargeRate is not None:
+            if maxDischargeRate is None:
+                maxDischargeRate = maxChargeRate
+            if socMin is None:
+                socMin = 0
+            if socMax is None:
+                socMax = 1
+            if socInitial is None:
+                socInitial = 0.5
+            if socFinal is None:
+                socFinal = 0.5
+
         name = 'Battery'
         # Parameters
         parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal, 
                       'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice}
         # Variables
         powerInput = cp.Variable(n_timesteps) # kWh, positive when it charges, negative when it discharges
-        soc = cp.Variable(n_timesteps, nonneg=True) # kWh
+        soc = cp.Variable(n_timesteps+1, nonneg=True) # kWh
         energy_capacity = cp.Variable(nonneg=True) # kWh
         variables = [powerInput, soc, energy_capacity]
         # Constraints
@@ -370,8 +384,7 @@ class Battery(Component):
         constraints += [soc <= socMax * energy_capacity]
         constraints += [soc[0] == socInitial * energy_capacity]
         constraints += [soc[-1] == socFinal * energy_capacity]
-        for t in range(n_timesteps-1):
-            constraints += [soc[t+1] == soc[t] + powerInput[t]]
+        constraints += [soc[1:] == soc[:-1] + powerInput] # roughly 15 times quicker to solve when vectorized
         # Consumption
         powerConsumption = powerInput # positive consumption (cost added) when it charges, negative (cost avoided) when it discharges
         gasConsumption = np.zeros(n_timesteps)
@@ -392,7 +405,8 @@ class Battery(Component):
         if self._parameters is not None:
             for k, v in self._parameters.items():
                 print(f"    {k}: {v}")
-        print(f"    Optimal capacity: {np.round(self.energy_capacity.value)} kWh")
+        print(f"    Optimal energy capacity: {np.round(self.energy_capacity.value)} kWh")
+        print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self.energy_capacity.value)} kW")
 
 
 class ThermalStorage(Component):
