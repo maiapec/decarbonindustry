@@ -2,9 +2,8 @@
 # Component.describe()
 
 ### System
-# TODO: check units
 # TODO: find a better way to assign costs (CAPEX)
-# TODO: plots
+# TODO: heatmaps : adjust scale of cmap
 # TODO: when adding components to a system, could we infer some parameters (like discount rate, ntimesteps, etc)
 # TODO: be able to delete components from a system
 
@@ -19,6 +18,9 @@
 
 import cvxpy as cp
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import pandas as pd
 
 def getValue(variable):
     if isinstance(variable, cp.Variable):
@@ -216,6 +218,54 @@ class System:
     
     def plot(self):
         raise NotImplementedError
+
+    def _pivot(self, timeSeries):
+        df = pd.DataFrame(timeSeries, index=self.timeIndex)
+        pivot_df = df.pivot_table(index=df.index.time, columns=df.index.date)
+        pivot_df.columns = pivot_df.columns.droplevel()
+        return pivot_df
+
+    
+    def plotHeatmaps(self):
+        nc = len(self.components)
+        fig, axs = plt.subplots(nc+2, 2, figsize=(15, 4*nc), dpi=300, sharex='col', sharey='row')
+        cmap = 'coolwarm'
+        # Power Load
+        sns.heatmap(self._pivot(self.powerLoad), ax=axs[0, 0], cmap=cmap, cbar_kws={'label': 'kWhe'})
+        axs[0, 0].set_title('Power Load')
+        axs[0, 0].set_xlabel('')
+        axs[0, 0].set_ylabel('Time')
+        # Heat Load
+        sns.heatmap(self._pivot(self.heatLoad), ax=axs[0, 1], cmap=cmap, cbar_kws={'label': 'kWhth'})
+        axs[0, 1].set_title('Heat Load')
+        axs[0, 1].set_xlabel('')
+        axs[0, 1].set_ylabel('')
+        # Components
+        for c in self.components:
+            i = self.components.index(c) + 1
+            # Power Consumption
+            sns.heatmap(self._pivot(getValue(c.powerConsumption)), ax=axs[i, 0], cmap=cmap, cbar_kws={'label': 'kWhe'})
+            axs[i, 0].set_title(f'{c.name} Power Consumption')
+            axs[i, 0].set_xlabel('')
+            axs[i, 0].set_ylabel('Time')
+            # Heat Output
+            sns.heatmap(self._pivot(getValue(c.heatOutput)), ax=axs[i, 1], cmap=cmap, cbar_kws={'label': 'kWhth'})
+            axs[i, 1].set_title(f'{c.name} Heat Output')
+            axs[i, 1].set_xlabel('')
+            axs[i, 1].set_ylabel('')
+        # Total Consumptions
+        sns.heatmap(self._pivot(getValue(self.powerConsumption)), ax=axs[-1, 0], cmap=cmap, cbar_kws={'label': 'kWhe'})
+        axs[-1, 0].set_title('Total Power Consumption')
+        axs[-1, 0].set_xlabel('Date')
+        axs[-1, 0].set_ylabel('Time')
+        axs[-1, 0].set_xticklabels(axs[-1, 0].get_xticklabels(), rotation=60)
+        sns.heatmap(self._pivot(getValue(self.gasConsumption)), ax=axs[-1, 1], cmap=cmap, cbar_kws={'label': 'kWhgas'})
+        axs[-1, 1].set_title('Total Gas Consumption')
+        axs[-1, 1].set_xlabel('Date')
+        axs[-1, 1].set_ylabel('')
+        axs[-1, 1].set_xticklabels(axs[-1, 1].get_xticklabels(), rotation=60)
+        plt.tight_layout()
+        return plt.gca()
     
     def compare(self):
         raise NotImplementedError
