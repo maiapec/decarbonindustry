@@ -37,7 +37,7 @@ H2_LIFETIME = 15 # [years]
 
 ##### Thermal Storage
 TES_EFF = 1 # [] # Already captured in the loss rate ?
-TES_MAX_CHARGE_RATE = 1/100 # [1/h] # How do we know this ? Should we optimize for it ? I just came up with this value
-TES_LOSS_RATE = 0.02 # [1/h]
-TES_CAPA_PRICE = 1000*TES_MAX_CHARGE_RATE # [$/kWhth]
+TES_MAX_CHARGE_RATE = 1/4 # [1/h] # How do we know this ? Should we optimize for it ? I just came up with this value
+TES_LOSS_RATE = 0 # [1/h]
+TES_CAPA_PRICE = 100*TES_MAX_CHARGE_RATE # [$/kWhth]
 TES_LIFETIME = 20 # [years]

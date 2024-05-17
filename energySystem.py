@@ -215,16 +215,87 @@ class System:
                 print(f"Gas opex: {np.round(self.gasOpex.value/1e6, 3)} M$")
                 print(f"Total power emissions: {np.round(self.powerEmissions.value.sum()/1e6, 2)} MtonCO2")
                 print(f"Total gas emissions: {np.round(self.gasEmissions.value.sum()/1e6, 2)} MtonCO2")
-    
-    def plot(self):
-        raise NotImplementedError
 
     def _pivot(self, timeSeries):
         df = pd.DataFrame(timeSeries, index=self.timeIndex)
         pivot_df = df.pivot_table(index=df.index.time, columns=df.index.date)
         pivot_df.columns = pivot_df.columns.droplevel()
         return pivot_df
+    
+    def getPowerDataFrame(self):
+        pwr = pd.DataFrame(self.powerLoad, index=self.timeIndex, columns=['Power Load'])
+        for c in self.components:
+            pwr[c.name] = getValue(c.powerConsumption)
+        pwr['Total Power Consumption'] = getValue(self.powerConsumption)
+        pwr['Marginal Power Price'] = self.powerPrice
+        pwr['Marginal Power Emissions'] = self.powerMarginalEmissions
+        return pwr
+    
+    def getHeatDataFrame(self):
+        heat = pd.DataFrame(self.heatLoad, index=self.timeIndex, columns=['Heat Load'])
+        for c in self.components:
+            heat[c.name] = getValue(c.heatOutput)
+        heat['Total Heat Output'] = getValue(self.heatOutput)
+        return heat
 
+    def plot_power(self, colors, powerConsumers, powerStorage, period=None, start=None, end=None):
+        pwr = self.getPowerDataFrame()
+        # Group
+        if period is not None and start is None and end is None:
+            pwr = pwr.loc[period]
+        elif period is None and start is not None and end is not None:
+            pwr = pwr.loc[start:end]
+        else:
+            raise ValueError("Please provide either a period or a start and end date") 
+        # Preprocess
+        pwr_pos = pwr[powerConsumers].copy()
+        pwr_batt_pos, pwr_battery_neg = pwr[powerStorage].clip(lower=0), pwr[powerStorage].clip(upper=0)
+        pwr_pos[powerStorage] = pwr_batt_pos
+        # Plot
+        fig, axs = plt.subplots(2, figsize=(15, 10), dpi=300, sharex=True)
+        pwr_pos.plot.area(color=colors, ax=axs[0])
+        for pwrSto in powerStorage:
+            pwr_battery_neg[pwrSto].plot.area(color=colors[pwrSto], label='', ax=axs[0])
+        pwr['Total Power Consumption'].plot(color=colors, ax=axs[0])
+        pwr['Marginal Power Price'].plot(color=colors['Marginal Power Price'], linestyle='--', ax=axs[1])
+        pwr['Marginal Power Emissions'].plot(color=colors['Marginal Power Emissions'], linestyle='--', ax=axs[1], secondary_y=True)
+        axs[0].set_ylabel('Power Consumption(kWh)')
+        axs[1].set_ylabel('Price ($/kWh)', color=colors['Marginal Power Price'])
+        axs[1].right_ax.set_ylabel('Emissions (kgCO2/kWh)', color=colors['Marginal Power Emissions'])
+        axs[0].legend()
+        plt.tight_layout
+        return plt.gca()
+    
+    def plot_heat(self, colors, heatGenerators, heatStorage, period=None, start=None, end=None):
+        heat = self.getHeatDataFrame()
+        power = self.getPowerDataFrame()
+        # Group
+        if period is not None and start is None and end is None:
+            heat = heat.loc[period]
+            power = power.loc[period]
+        elif period is None and start is not None and end is not None:
+            heat = heat.loc[start:end]
+            power = power.loc[start:end]
+        else:
+            raise ValueError("Please provide either a period or a start and end date")
+        # Preprocess
+        heat_pos = heat[heatGenerators].copy()
+        heat_sto_pos, heat_sto_neg = heat[heatStorage].clip(lower=0), heat[heatStorage].clip(upper=0)
+        heat_pos[heatStorage] = heat_sto_pos
+        # Plot
+        fig, axs = plt.subplots(2, figsize=(15, 10), dpi=300, sharex=True)
+        heat_pos.plot.area(color=colors, ax=axs[0])
+        for heatSto in heatStorage:
+            heat_sto_neg[heatSto].plot.area(color=colors[heatSto], label='', ax=axs[0])
+        heat['Heat Load'].plot(color=colors['Heat Load'], ax=axs[0])
+        power['Marginal Power Price'].plot(color=colors, linestyle='--', ax=axs[1])
+        power['Marginal Power Emissions'].plot(color=colors, linestyle='--', ax=axs[1], secondary_y=True)
+        axs[0].set_ylabel('Heat Generation(kWh)')
+        axs[1].set_ylabel('Price ($/kWh)', color=colors['Marginal Power Price'])
+        axs[1].right_ax.set_ylabel('Emissions (kgCO2/kWh)', color=colors['Marginal Power Emissions'])
+        axs[0].legend()
+        plt.tight_layout
+        return plt.gca()
     
     def plotHeatmaps(self):
         nc = len(self.components)
