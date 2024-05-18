@@ -2,10 +2,12 @@
 # Component.describe()
 
 ### System
+# TODO: solar profile is for 2022, change marginal emissions ?
 # TODO: find a better way to assign costs (CAPEX)
 # TODO: heatmaps : adjust scale of cmap
 # TODO: when adding components to a system, could we infer some parameters (like discount rate, ntimesteps, etc)
 # TODO: be able to delete components from a system
+# TODO: add demand charge
 
 ### Component
 # TODO: add efficiency to the battery and thermal storage
@@ -38,6 +40,7 @@ class System:
         self.components = components
         # time series data
         self.timeIndex = timeIndex
+        self.dt = (timeIndex[1] - timeIndex[0]).seconds / 3600
         self.powerLoad = powerLoad
         self.heatLoad = heatLoad
         self.powerPrice = powerPrice
@@ -134,6 +137,9 @@ class System:
         self.gasOpex = cp.pos(self.gasConsumption) @ self.gasPrice
         self.totalCost = self.powerOpex + self.gasOpex + self.annualizedCapex
         self.powerEmissions = cp.pos(self.powerConsumption) @ self.powerMarginalEmissions
+        for component in self.components:
+            if component.name == 'PVsystem':
+                self.powerEmissions += component.emissions
         self.gasEmissions = cp.pos(self.gasConsumption) @ self.gasMarginalEmissions
         self.totalEmissions = self.powerEmissions + self.gasEmissions
         # set objective
@@ -227,6 +233,7 @@ class System:
         for c in self.components:
             pwr[c.name] = getValue(c.powerConsumption)
         pwr['Total Power Consumption'] = getValue(self.powerConsumption)
+        pwr = pwr / self.dt # kWh to kW
         pwr['Marginal Power Price'] = self.powerPrice
         pwr['Marginal Power Emissions'] = self.powerMarginalEmissions
         return pwr
@@ -236,9 +243,10 @@ class System:
         for c in self.components:
             heat[c.name] = getValue(c.heatOutput)
         heat['Total Heat Output'] = getValue(self.heatOutput)
+        heat = heat / self.dt # kWh to kW
         return heat
 
-    def plot_power(self, colors, powerConsumers, powerStorage, period=None, start=None, end=None):
+    def plot_power(self, colors, powerConsumers, powerStorage, powerGenerators, period=None, start=None, end=None):
         pwr = self.getPowerDataFrame()
         # Group
         if period is not None and start is None and end is None:
@@ -248,18 +256,19 @@ class System:
         else:
             raise ValueError("Please provide either a period or a start and end date") 
         # Preprocess
-        pwr_pos = pwr[powerConsumers].copy()
+        pwr_pos = pwr[powerConsumers].copy() 
+        pwr_neg = pwr[powerGenerators].copy()
         pwr_batt_pos, pwr_battery_neg = pwr[powerStorage].clip(lower=0), pwr[powerStorage].clip(upper=0)
         pwr_pos[powerStorage] = pwr_batt_pos
+        pwr_neg[''] = pwr_battery_neg
         # Plot
         fig, axs = plt.subplots(2, figsize=(15, 10), dpi=300, sharex=True)
         pwr_pos.plot.area(color=colors, ax=axs[0])
-        for pwrSto in powerStorage:
-            pwr_battery_neg[pwrSto].plot.area(color=colors[pwrSto], label='', ax=axs[0])
+        pwr_neg.plot.area(color=colors, ax=axs[0])
         pwr['Total Power Consumption'].plot(color=colors, ax=axs[0])
         pwr['Marginal Power Price'].plot(color=colors['Marginal Power Price'], linestyle='--', ax=axs[1])
         pwr['Marginal Power Emissions'].plot(color=colors['Marginal Power Emissions'], linestyle='--', ax=axs[1], secondary_y=True)
-        axs[0].set_ylabel('Power Consumption(kWh)')
+        axs[0].set_ylabel('Power Consumption(kW)')
         axs[1].set_ylabel('Price ($/kWh)', color=colors['Marginal Power Price'])
         axs[1].right_ax.set_ylabel('Emissions (kgCO2/kWh)', color=colors['Marginal Power Emissions'])
         axs[0].legend()
@@ -290,7 +299,7 @@ class System:
         heat['Heat Load'].plot(color=colors['Heat Load'], ax=axs[0])
         power['Marginal Power Price'].plot(color=colors, linestyle='--', ax=axs[1])
         power['Marginal Power Emissions'].plot(color=colors, linestyle='--', ax=axs[1], secondary_y=True)
-        axs[0].set_ylabel('Heat Generation(kWh)')
+        axs[0].set_ylabel('Heat Generation(kW)')
         axs[1].set_ylabel('Price ($/kWh)', color=colors['Marginal Power Price'])
         axs[1].right_ax.set_ylabel('Emissions (kgCO2/kWh)', color=colors['Marginal Power Emissions'])
         axs[0].legend()
@@ -302,12 +311,12 @@ class System:
         fig, axs = plt.subplots(nc+2, 2, figsize=(15, 4*nc), dpi=300, sharex='col', sharey='row')
         cmap = 'coolwarm'
         # Power Load
-        sns.heatmap(self._pivot(self.powerLoad), ax=axs[0, 0], cmap=cmap, cbar_kws={'label': 'kWhe'})
+        sns.heatmap(self._pivot(self.powerLoad), ax=axs[0, 0], cmap=cmap, cbar_kws={'label': 'kWe'})
         axs[0, 0].set_title('Power Load')
         axs[0, 0].set_xlabel('')
         axs[0, 0].set_ylabel('Time')
         # Heat Load
-        sns.heatmap(self._pivot(self.heatLoad), ax=axs[0, 1], cmap=cmap, cbar_kws={'label': 'kWhth'})
+        sns.heatmap(self._pivot(self.heatLoad), ax=axs[0, 1], cmap=cmap, cbar_kws={'label': 'kWth'})
         axs[0, 1].set_title('Heat Load')
         axs[0, 1].set_xlabel('')
         axs[0, 1].set_ylabel('')
@@ -315,22 +324,28 @@ class System:
         for c in self.components:
             i = self.components.index(c) + 1
             # Power Consumption
-            sns.heatmap(self._pivot(getValue(c.powerConsumption)), ax=axs[i, 0], cmap=cmap, cbar_kws={'label': 'kWhe'})
-            axs[i, 0].set_title(f'{c.name} Power Consumption')
+            if c.name == 'PVsystem':
+                pwrCons = - self._pivot(getValue(c.powerConsumption))
+                ttl = 'PVsystem Power Generation'
+            else:
+                pwrCons = self._pivot(getValue(c.powerConsumption))
+                ttl = f'{c.name} Power Consumption'
+            sns.heatmap(pwrCons, ax=axs[i, 0], cmap=cmap, cbar_kws={'label': 'kWe'})
+            axs[i, 0].set_title(ttl)
             axs[i, 0].set_xlabel('')
             axs[i, 0].set_ylabel('Time')
             # Heat Output
-            sns.heatmap(self._pivot(getValue(c.heatOutput)), ax=axs[i, 1], cmap=cmap, cbar_kws={'label': 'kWhth'})
+            sns.heatmap(self._pivot(getValue(c.heatOutput)), ax=axs[i, 1], cmap=cmap, cbar_kws={'label': 'kWth'})
             axs[i, 1].set_title(f'{c.name} Heat Output')
             axs[i, 1].set_xlabel('')
             axs[i, 1].set_ylabel('')
         # Total Consumptions
-        sns.heatmap(self._pivot(getValue(self.powerConsumption)), ax=axs[-1, 0], cmap=cmap, cbar_kws={'label': 'kWhe'})
+        sns.heatmap(self._pivot(getValue(self.powerConsumption)), ax=axs[-1, 0], cmap=cmap, cbar_kws={'label': 'kWe'})
         axs[-1, 0].set_title('Total Power Consumption')
         axs[-1, 0].set_xlabel('Date')
         axs[-1, 0].set_ylabel('Time')
         axs[-1, 0].set_xticklabels(axs[-1, 0].get_xticklabels(), rotation=60)
-        sns.heatmap(self._pivot(getValue(self.gasConsumption)), ax=axs[-1, 1], cmap=cmap, cbar_kws={'label': 'kWhgas'})
+        sns.heatmap(self._pivot(getValue(self.gasConsumption)), ax=axs[-1, 1], cmap=cmap, cbar_kws={'label': 'kWgas'})
         axs[-1, 1].set_title('Total Gas Consumption')
         axs[-1, 1].set_xlabel('Date')
         axs[-1, 1].set_ylabel('')
@@ -348,7 +363,7 @@ class Component:
         self._parameters = parameters
         self._variables = variables
         self._constraints = constraints
-        self.powerConsumption = powerConsumption
+        self.powerConsumption = powerConsumption # kWh
         self.gasConsumption = gasConsumption
         self.heatOutput = heatOutput
         self.capex = capex
@@ -502,8 +517,8 @@ class Battery(Component):
         variables = [powerInput, soc, energy_capacity]
         # Constraints
         constraints = []
-        constraints += [-powerInput <= maxDischargeRate * energy_capacity]
-        constraints += [powerInput <= maxChargeRate * energy_capacity]
+        constraints += [-powerInput <= maxDischargeRate * dt * energy_capacity] # maxDischargeRate is defined for an hour
+        constraints += [powerInput <= maxChargeRate * dt * energy_capacity] # maxChargeRate is defined for an hour
         constraints += [soc >= socMin * energy_capacity]
         constraints += [soc <= socMax * energy_capacity]
         constraints += [soc[0] == socInitial * energy_capacity]
@@ -616,38 +631,52 @@ class ThermalStorage(Component):
 
 class PVsystem(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, pvLoad=None, capacityPrice=None,  discRate=None, n_years=None):
+    def __init__(self, n_timesteps=None, dt=None, pvLoadProfile=None, capacityPrice=None, ppaPrice=None, averageEmissions=None, discRate=None, n_years=None, onsite=False):
         '''
         Inputs:
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
-            - pvLoad: time-indexed electricity available from the PV system, in % of the PV capacity
+            - pvLoadProfile: time-indexed electricity available from the PV system, in % of the PV capacity
             - capacityPrice: price of capacity in $/kW
             - discRate: discount rate in %
             - n_years: lifetime of the component in years
         '''
 
         name = 'PVsystem'
-        # Parameters
-        parameters = {'capacityPrice': capacityPrice, 'pvLoad': pvLoad}
         # Variables
         capacity = cp.Variable(nonneg=True) # kW
         variables = [capacity]
         # Derived quantities
-        powerOutput = pvLoad * capacity * dt # kWh
+        powerOutput = pvLoadProfile * capacity * dt # kWh
+        # Cost and parameter
+        if capacityPrice is not None and ppaPrice is None:
+            capex = capacity * capacityPrice # $
+            CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
+            parameters = {'capacityPrice': capacityPrice, 'pvLoadProfile': pvLoadProfile, 'onsite': onsite}
+        elif ppaPrice is not None and capacityPrice is None:
+            capex = cp.sum(powerOutput) * ppaPrice # In this case capex is already the annualized capex
+            CRF = 1
+            parameters = {'ppaPrice': ppaPrice, 'pvLoadProfile': pvLoadProfile, 'onsite': onsite}
+        else:
+            raise ValueError("Please provide either a capacity price or a levelized cost of electricity")
         # Constraints
         constraints = []
         # Consumption
         powerConsumption = - powerOutput
-        gasConsumption = 0
-        heatOutput = 0
-        # Cost
-        capex = capacity * capacityPrice # $
-        CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
-
+        gasConsumption = np.zeros(n_timesteps)
+        heatOutput = np.zeros(n_timesteps)
+        
         super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
         # Store specific attributes
         self.capacity = capacity
+        self.emissions = cp.sum(powerOutput) * averageEmissions
 
-    # Question: consider PV to be sold back to the grid?
+    
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal power capacity: {np.round(self.capacity.value/1000, 2)} MW")
+        print(f"    Annual emissions: {np.round(self.emissions.value/1e6, 2)} MtonCO2")

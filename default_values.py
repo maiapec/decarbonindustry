@@ -41,3 +41,7 @@ TES_MAX_CHARGE_RATE = 1/4 # [1/h] # How do we know this ? Should we optimize for
 TES_LOSS_RATE = 0 # [1/h]
 TES_CAPA_PRICE = 100*TES_MAX_CHARGE_RATE # [$/kWhth]
 TES_LIFETIME = 20 # [years]
+
+##### Solar PPA
+PV_PPA_PRICE = 0.04 # [$/kWh]
+PV_AVG_EMISSIONS = 0.03 # [kgCO2/kWh] # I came up with this value
