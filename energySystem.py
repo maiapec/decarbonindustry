@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 
 # Component.describe()
 
@@ -691,3 +692,5 @@ class PVsystem(Component):
                 print(f"    {k}: {v}")
         print(f"    Optimal power capacity: {np.round(self.capacity.value/1000, 2)} MW")
         print(f"    Annual emissions: {np.round(self.emissions.value/1e6, 2)} MtonCO2")
+=======
+>>>>>>> origin/main
