@@ -10,12 +10,13 @@
 
 ### Component
 # TODO: add efficiency to the battery and thermal storage
-# TODO: make a dict of variables
+# TODO: make a dict of variables - done
 # TODO: plots
 # TODO: implement detailed or not in the describe method for components
-# TODO: I changed the orders of the parameters in the __init__ of the components, check the string desciption (especially battery and thermal storage)
+# TODO: I changed the orders of the parameters in the __init__ of the components, check the string desciption (especially battery and thermal storage) - done
 # TODO: add an option to set the parameters automatically from default values 
 
+# Types of transfer are: 'GasToHeat', 'PowerToHeat', 'Storage', 'PowerGeneration'.
 
 import cvxpy as cp
 import numpy as np
@@ -27,6 +28,7 @@ def getValue(variable):
         return variable.value
     else:
         return variable
+    
 
 class System:
 
@@ -222,10 +224,12 @@ class System:
 
 class Component:
 
-    def __init__(self, name, parameters=None, variables=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
+    def __init__(self, name, typeTransfer=None, parameters=None, variables=None, variablesDict=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
         self.name = name
+        self.typeTransfer = typeTransfer
         self._parameters = parameters
         self._variables = variables
+        self._variablesDict = variablesDict
         self._constraints = constraints
         self.powerConsumption = powerConsumption
         self.gasConsumption = gasConsumption
@@ -262,12 +266,15 @@ class NaturalGasFurnace(Component):
         '''
 
         name = 'NaturalGasFurnace'
+        typeTransfer = 'GasToHeat'
         # Parameters
         parameters = {'capacityPrice': capacityPrice, 'eff': eff}
         # Variables
         gasInput = cp.Variable(n_timesteps, nonneg=True) # kWh
         capacity = cp.Variable(nonneg=True) # kW
         variables = [gasInput, capacity]
+        # Store in dictionary
+        variablesDict = {'gasInput': gasInput, 'capacity': capacity}
         # Derived quantities
         heatOutput = eff*gasInput # kWh
         # Constraints
@@ -279,11 +286,8 @@ class NaturalGasFurnace(Component):
         capex = capacity * capacityPrice # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
-        # Store specific attributes
-        self.gasInput = gasInput
-        self.capacity = capacity
 
     def describe(self):
         print(f"Component: {self.name}")
@@ -307,12 +311,15 @@ class HeatPump(Component):
         '''
 
         name = 'HeatPump'
+        typeTransfer = 'PowerToHeat'
         # Parameters
         parameters = {'capacityPrice': capacityPrice, 'COP': COP}
         # Variables
         powerInput = cp.Variable(n_timesteps, nonneg=True) # kWh
         capacity = cp.Variable(nonneg=True) # kW
         variables = [powerInput, capacity]
+        # Store in dictionary
+        variablesDict = {'powerInput': powerInput, 'capacity': capacity}
         # Derived quantities
         heatOutput = COP * powerInput # kWh
         # Constraints
@@ -324,11 +331,8 @@ class HeatPump(Component):
         capex = capacity * capacityPrice # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
-        # Store specific attributes
-        self.powerInput = powerInput
-        self.capacity = capacity
 
     def describe(self):
         print(f"Component: {self.name}")
@@ -347,18 +351,20 @@ class Battery(Component):
         Inputs:
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
+            - maxChargeRate: maximum charge rate in % of battery capacity
+            - capacityPrice: price of capacity in $/kWh
+            - maxDischargeRate: maximum discharge rate in % of battery capacity
             - socMin: minimum state of charge in % of battery capacity
             - socMax: maximum state of charge in % of battery capacity
             - socInitial: initial state of charge in % of battery capacity
             - socFinal: final state of charge in % of battery capacity
-            - maxDischargeRate: maximum discharge rate in % of battery capacity
-            - maxChargeRate: maximum charge rate in % of battery capacity
-            - capacityPrice: price of capacity in $/kWh
             - discRate: discount rate in %
             - n_years: lifetime of the component in years
+            - name: type of battery. Default is "Battery"
         NB: State of charge soc is in kWh.
         '''
 
+        # Default values
         if maxChargeRate is not None:
             if maxDischargeRate is None:
                 maxDischargeRate = maxChargeRate
@@ -371,6 +377,8 @@ class Battery(Component):
             if socFinal is None:
                 socFinal = 0.5
 
+        typeTransfer = 'Storage'
+
         # Parameters
         parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal, 
                       'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice}
@@ -379,6 +387,8 @@ class Battery(Component):
         soc = cp.Variable(n_timesteps+1, nonneg=True) # kWh
         energy_capacity = cp.Variable(nonneg=True) # kWh
         variables = [powerInput, soc, energy_capacity]
+        # Store in dictionary
+        variablesDict = {'powerInput': powerInput, 'soc': soc, 'energy_capacity': energy_capacity}
         # Constraints
         constraints = []
         constraints += [-powerInput <= maxDischargeRate * energy_capacity]
@@ -396,12 +406,8 @@ class Battery(Component):
         capex = energy_capacity * capacityPrice # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
-        # Store specific attributes
-        self.powerInput = powerInput
-        self.soc = soc
-        self.energy_capacity = energy_capacity
 
     def describe(self):
         print(f"Component: {self.name}")
@@ -422,14 +428,14 @@ class ThermalStorage(Component):
         Inputs:
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
+            - maxChargeRate: maximum charge rate in % of battery capacity
+            - lossRate: rate of energy loss per hour in % of battery capacity
+            - capacityPrice: price of capacity in $/kWh
+            - maxDischargeRate: maximum discharge rate in % of battery capacity
             - socMin: minimum state of charge in % of battery capacity
             - socMax: maximum state of charge in % of battery capacity
             - socInitial: initial state of charge in % of battery capacity
             - socFinal: final state of charge in % of battery capacity
-            - maxDischargeRate: maximum discharge rate in % of battery capacity
-            - maxChargeRate: maximum charge rate in % of battery capacity
-            - capacityPrice: price of capacity in $/kWh
-            - lossRate: rate of energy loss per hour in % of battery capacity
             - discRate: discount rate in %
             - n_years: lifetime of the component in years
         NB: State of charge soc is in kWh.
@@ -448,6 +454,7 @@ class ThermalStorage(Component):
                 socFinal = 0.5
 
         name = 'ThermalStorage'
+        typeTransfer = 'Storage'
         # Parameters
         parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal, 
                       'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice, 'lossRate': lossRate}
@@ -457,6 +464,8 @@ class ThermalStorage(Component):
         soc = cp.Variable(n_timesteps + 1, nonneg=True) # kWh
         energy_capacity = cp.Variable(nonneg=True) # kWh
         variables = [heatInput, soc, energy_capacity]
+        # Store in dictionary
+        variablesDict = {'heatInput': heatInput, 'soc': soc, 'energy_capacity': energy_capacity}
         # Constraints
         constraints = []
         constraints += [-heatInput <= maxDischargeRate * energy_capacity]
@@ -474,15 +483,11 @@ class ThermalStorage(Component):
         capex = energy_capacity * capacityPrice # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
         # TODO: Maya : check if loss rate in % of capacity or current energy stored.
         # Aramis : I think it is in % of current energy stored, (because it depends on the temperature of the storage, which is related to the energy stored)
 
-        # Store specific attributes
-        self.heatInput = heatInput
-        self.soc = soc
-        self.energy_capacity = energy_capacity
     
     def describe(self):
         print(f"Component: {self.name}")
@@ -507,11 +512,14 @@ class PVsystem(Component):
         '''
 
         name = 'PVsystem'
+        typeTransfer = 'PowerGeneration'
         # Parameters
         parameters = {'capacityPrice': capacityPrice, 'pvLoad': pvLoad}
         # Variables
         capacity = cp.Variable(nonneg=True) # kW
         variables = [capacity]
+        # Store in dictionary
+        variablesDict = {'capacity': capacity}
         # Derived quantities
         powerOutput = pvLoad * capacity * dt # kWh
         # Constraints
@@ -524,9 +532,7 @@ class PVsystem(Component):
         capex = capacity * capacityPrice # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, parameters, variables, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
-        # Store specific attributes
-        self.capacity = capacity
 
     # Question: consider PV to be sold back to the grid?
