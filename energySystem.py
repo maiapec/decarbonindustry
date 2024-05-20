@@ -10,13 +10,9 @@
 # TODO: solve with carbon price
 
 ### Component
-# TODO: add efficiency to the battery and thermal storage
-# TODO: make a dict of variables
 # TODO: make Crate of thermal storage a variable
 # TODO: plots
 # TODO: implement detailed or not in the describe method for components
-# TODO: I changed the orders of the parameters in the __init__ of the components, check the string desciption (especially battery and thermal storage)
-
 
 import cvxpy as cp
 import numpy as np
@@ -368,7 +364,7 @@ class System:
 
 class Component:
 
-    def __init__(self, name, typeTransfer, parameters=None, variables=None, variablesDict=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
+    def __init__(self, name, typeTransfer=None, parameters=None, variables=None, variablesDict=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
         self.name = name
         self.typeTransfer = typeTransfer
         self._parameters = parameters
