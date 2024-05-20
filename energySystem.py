@@ -316,12 +316,12 @@ class System:
         fig, axs = plt.subplots(nc+2, 2, figsize=(15, 3*nc+2), dpi=300, sharex='col', sharey='row')
         cmap = 'coolwarm'
         # Power Load
-        sns.heatmap(self._pivot(self.powerLoad), ax=axs[0, 0], cmap=cmap, cbar_kws={'label': 'kWe'})
+        sns.heatmap(self._pivot(self.powerLoad/self.dt), ax=axs[0, 0], cmap=cmap, cbar_kws={'label': 'kWe'}) # kWh to kW
         axs[0, 0].set_title('Power Load')
         axs[0, 0].set_xlabel('')
         axs[0, 0].set_ylabel('Time')
         # Heat Load
-        sns.heatmap(self._pivot(self.heatLoad), ax=axs[0, 1], cmap=cmap, cbar_kws={'label': 'kWth'})
+        sns.heatmap(self._pivot(self.heatLoad/self.dt), ax=axs[0, 1], cmap=cmap, cbar_kws={'label': 'kWth'}) # kWh to kW
         axs[0, 1].set_title('Heat Load')
         axs[0, 1].set_xlabel('')
         axs[0, 1].set_ylabel('')
@@ -330,27 +330,27 @@ class System:
             i = self.components.index(c) + 1
             # Power Consumption
             if c.name == 'PVsystem':
-                pwrCons = - self._pivot(getValue(c.powerConsumption))
+                pwrCons = - self._pivot(getValue(c.powerConsumption)/self.dt) # kWh to kW
                 ttl = 'PVsystem Power Generation'
             else:
-                pwrCons = self._pivot(getValue(c.powerConsumption))
+                pwrCons = self._pivot(getValue(c.powerConsumption)/self.dt) # kWh to kW
                 ttl = f'{c.name} Power Consumption'
             sns.heatmap(pwrCons, ax=axs[i, 0], cmap=cmap, cbar_kws={'label': 'kWe'})
             axs[i, 0].set_title(ttl)
             axs[i, 0].set_xlabel('')
             axs[i, 0].set_ylabel('Time')
             # Heat Output
-            sns.heatmap(self._pivot(getValue(c.heatOutput)), ax=axs[i, 1], cmap=cmap, cbar_kws={'label': 'kWth'})
+            sns.heatmap(self._pivot(getValue(c.heatOutput)/self.dt), ax=axs[i, 1], cmap=cmap, cbar_kws={'label': 'kWth'}) # kWh to kW
             axs[i, 1].set_title(f'{c.name} Heat Output')
             axs[i, 1].set_xlabel('')
             axs[i, 1].set_ylabel('')
         # Total Consumptions
-        sns.heatmap(self._pivot(getValue(self.powerConsumption)), ax=axs[-1, 0], cmap=cmap, cbar_kws={'label': 'kWe'})
+        sns.heatmap(self._pivot(getValue(self.powerConsumption)/self.dt), ax=axs[-1, 0], cmap=cmap, cbar_kws={'label': 'kWe'}) # kWh to kW
         axs[-1, 0].set_title('Power bought from Grid')
         axs[-1, 0].set_xlabel('Date')
         axs[-1, 0].set_ylabel('Time')
         axs[-1, 0].set_xticklabels(axs[-1, 0].get_xticklabels(), rotation=60)
-        sns.heatmap(self._pivot(getValue(self.gridPower)), ax=axs[-1, 1], cmap=cmap, cbar_kws={'label': 'kWe'})
+        sns.heatmap(self._pivot(getValue(self.gridPower)/self.dt), ax=axs[-1, 1], cmap=cmap, cbar_kws={'label': 'kWe'}) # kWh to kW
         axs[-1, 1].set_title('Power consumed from Grid')
         axs[-1, 1].set_xlabel('Date')
         axs[-1, 1].set_ylabel('')
@@ -565,7 +565,7 @@ class Battery(Component):
 # Added power capacity to variables to optimize
 class ThermalStorage(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, capacityPrice=None, 
+    def __init__(self, n_timesteps=None, dt=None, energyCapacityPrice=None, powerCapacityPrice=None,
                  lossRate=None, effCharge = None, effDischarge = None,
                  socMin=0, socMax=1, socInitial=0.5, socFinal=0.5, 
                  discRate=None, n_years=None):
@@ -605,7 +605,7 @@ class ThermalStorage(Component):
         typeTransfer = 'Storage'
         # Parameters
         parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal,
-                      'lossRate': lossRate, 'capacityPrice': capacityPrice,
+                      'lossRate': lossRate, 'energyCapacityPrice': energyCapacityPrice, 'powerCapacityPrice': powerCapacityPrice,
                       'effCharge': effCharge, 'effDischarge': effDischarge}
         # Variables
         heatInputCharge = cp.Variable(n_timesteps) # kWh
@@ -632,7 +632,7 @@ class ThermalStorage(Component):
         gasConsumption = np.zeros(n_timesteps)
         heatOutput = - heatInput # load added when it charges (heatInput positive), load avoided when it discharges (heatInput negative)
         # Cost
-        capex = energyCapacity * capacityPrice # $
+        capex = energyCapacity * energyCapacityPrice + powerCapacity * powerCapacityPrice# $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
         super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
@@ -643,8 +643,8 @@ class ThermalStorage(Component):
         if self._parameters is not None:
             for k, v in self._parameters.items():
                 print(f"    {k}: {v}")
-        print(f"    Optimal energy capacity: {np.round(self._variablesDict['energyCapacity'].value)} kWh")
-        print(f"    Optimal power capacity: {np.round(self._variablesDict['powerCapacity'].value)} kW")
+        print(f"    Optimal energy capacity: {np.round(self._variablesDict['energyCapacity'].value)} kWhth")
+        print(f"    Optimal heat capacity: {np.round(self._variablesDict['powerCapacity'].value)} kWth")
 
 
 class PVsystem(Component):

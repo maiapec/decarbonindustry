@@ -43,8 +43,9 @@ H2_LIFETIME = 15 # [years]
 TES_EFF_CHARGE = 1 # [] 
 TES_EFF_DISCHARGE = 1 # []
 #TES_MAX_CHARGE_RATE = 1/100 # [1/h] # not used now because defined a variable for max power
-TES_LOSS_RATE = 0 # [1/h]
-TES_CAPA_PRICE = 200 # [$/kWhth]
+TES_LOSS_RATE = 0.001 # [1/h]
+TES_ECAPA_PRICE = 10 # [$/kWhth]
+TES_PCAPA_PRICE = 50 # [$/kWth]
 TES_LIFETIME = 20 # [years]
 
 ##### Solar PPA
