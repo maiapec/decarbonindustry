@@ -433,7 +433,7 @@ class NaturalGasFurnace(Component):
         if self._parameters is not None:
             for k, v in self._parameters.items():
                 print(f"    {k}: {v}")
-        print(f"    Optimal capacity: {np.round(self.capacity.value)} kW")
+        print(f"    Optimal capacity: {np.round(self._variablesDict['capacity'].value)} kW")
 
 
 class HeatPump(Component):
@@ -477,7 +477,7 @@ class HeatPump(Component):
         if self._parameters is not None:
             for k, v in self._parameters.items():
                 print(f"    {k}: {v}")
-        print(f"    Optimal capacity: {np.round(self.capacity.value)} kW")
+        print(f"    Optimal capacity: {np.round(self._variablesDict['capacity'].value)} kW")
 
 
 class Battery(Component):
@@ -527,25 +527,25 @@ class Battery(Component):
         # Variables
         powerInput = cp.Variable(n_timesteps) # kWh, positive when it charges, negative when it discharges
         soc = cp.Variable(n_timesteps+1, nonneg=True) # kWh
-        energy_capacity = cp.Variable(nonneg=True) # kWh
-        variables = [powerInput, soc, energy_capacity]
+        energyCapacity = cp.Variable(nonneg=True) # kWh
+        variables = [powerInput, soc, energyCapacity]
         # Save variables in a dictionary
-        variablesDict = {'powerInput': powerInput, 'soc': soc, 'energy_capacity': energy_capacity}
+        variablesDict = {'powerInput': powerInput, 'soc': soc, 'energyCapacity': energyCapacity}
         # Constraints
         constraints = []
-        constraints += [-powerInput <= maxDischargeRate * dt * energy_capacity] # maxDischargeRate is defined for an hour
-        constraints += [powerInput <= maxChargeRate * dt * energy_capacity] # maxChargeRate is defined for an hour
-        constraints += [soc >= socMin * energy_capacity]
-        constraints += [soc <= socMax * energy_capacity]
-        constraints += [soc[0] == socInitial * energy_capacity]
-        constraints += [soc[-1] == socFinal * energy_capacity]
+        constraints += [-powerInput <= maxDischargeRate * dt * energyCapacity] # maxDischargeRate is defined for an hour
+        constraints += [powerInput <= maxChargeRate * dt * energyCapacity] # maxChargeRate is defined for an hour
+        constraints += [soc >= socMin * energyCapacity]
+        constraints += [soc <= socMax * energyCapacity]
+        constraints += [soc[0] == socInitial * energyCapacity]
+        constraints += [soc[-1] == socFinal * energyCapacity]
         constraints += [soc[1:] == soc[:-1] + effCharge*cp.pos(powerInput[:-1]) - effDischarge*cp.pos(-powerInput[:-1])] # added efficiency
         # Consumption
         powerConsumption = powerInput # positive consumption (cost added) when it charges, negative (cost avoided) when it discharges
         gasConsumption = np.zeros(n_timesteps)
         heatOutput = np.zeros(n_timesteps)
         # Cost
-        capex = energy_capacity * capacityPrice # $
+        capex = energyCapacity * capacityPrice # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
         super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
@@ -556,8 +556,8 @@ class Battery(Component):
         if self._parameters is not None:
             for k, v in self._parameters.items():
                 print(f"    {k}: {v}")
-        print(f"    Optimal energy capacity: {np.round(self.energy_capacity.value)} kWh")
-        print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self.energy_capacity.value)} kW")
+        print(f"    Optimal energy capacity: {np.round(self._variablesDict['energyCapacity'].value)} kWh")
+        print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self._variablesDict['energyCapacity'].value)} kW")
 
 
 # Add c-rate as variable to optimize
@@ -610,25 +610,25 @@ class ThermalStorage(Component):
         # Variables
         heatInput = cp.Variable(n_timesteps) # kWh, positive when it charges, negative when it discharges
         soc = cp.Variable(n_timesteps + 1, nonneg=True) # kWh
-        energy_capacity = cp.Variable(nonneg=True) # kWh
-        variables = [heatInput, soc, energy_capacity]
+        energyCapacity = cp.Variable(nonneg=True) # kWh
+        variables = [heatInput, soc, energyCapacity]
         # Store variables in a dictionary
-        variablesDict = {'heatInput': heatInput, 'soc': soc, 'energy_capacity': energy_capacity}
+        variablesDict = {'heatInput': heatInput, 'soc': soc, 'energyCapacity': energyCapacity}
         # Constraints
         constraints = []
-        constraints += [-heatInput <= maxDischargeRate * energy_capacity]
-        constraints += [heatInput <= maxChargeRate * energy_capacity]
-        constraints += [soc >= socMin * energy_capacity]
-        constraints += [soc <= socMax * energy_capacity]
-        constraints += [soc[0] == socInitial * energy_capacity]
-        constraints += [soc[-1] == socFinal * energy_capacity]
+        constraints += [-heatInput <= maxDischargeRate * energyCapacity]
+        constraints += [heatInput <= maxChargeRate * energyCapacity]
+        constraints += [soc >= socMin * energyCapacity]
+        constraints += [soc <= socMax * energyCapacity]
+        constraints += [soc[0] == socInitial * energyCapacity]
+        constraints += [soc[-1] == socFinal * energyCapacity]
         constraints += [soc[1:] == soc[:-1]*(1 - dt*lossRate) + effCharge*cp.pos(heatInput[:-1]) - effDischarge*cp.pos(-heatInput[:-1])] # added efficiency
         # Consumption
         powerConsumption = np.zeros(n_timesteps)
         gasConsumption = np.zeros(n_timesteps)
         heatOutput = - heatInput # load added when it charges (heatInput positive), load avoided when it discharges (heatInput negative)
         # Cost
-        capex = energy_capacity * capacityPrice # $
+        capex = energyCapacity * capacityPrice # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
         super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
@@ -639,8 +639,8 @@ class ThermalStorage(Component):
         if self._parameters is not None:
             for k, v in self._parameters.items():
                 print(f"    {k}: {v}")
-        print(f"    Optimal energy capacity: {np.round(self.energy_capacity.value)} kWh")
-        print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self.energy_capacity.value)} kW")
+        print(f"    Optimal energy capacity: {np.round(self._variablesDict['energyCapacity'].value)} kWh")
+        print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self._variablesDict['energyCapacity'].value)} kW")
 
 
 class PVsystem(Component):
@@ -682,14 +682,17 @@ class PVsystem(Component):
         powerConsumption = - powerOutput
         gasConsumption = np.zeros(n_timesteps)
         heatOutput = np.zeros(n_timesteps)
+        # Emissions
+        emissions = cp.sum(powerOutput) * averageEmissions
         
         super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
-    
+        self.emissions = emissions
+        
     def describe(self):
         print(f"Component: {self.name}")
         if self._parameters is not None:
             for k, v in self._parameters.items():
                 print(f"    {k}: {v}")
-        print(f"    Optimal power capacity: {np.round(self.capacity.value/1000, 2)} MW")
+        print(f"    Optimal power capacity: {np.round(self._variablesDict['capacity'].value/1000, 2)} MW")
         print(f"    Annual emissions: {np.round(self.emissions.value/1e6, 2)} MtonCO2")
