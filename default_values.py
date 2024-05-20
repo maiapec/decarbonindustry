@@ -1,5 +1,5 @@
-# TODO: Add sources
-# TODO: find real vqlues
+# Data is adapted from the NREL 2023 Annual Technology Baseline.
+# https://atb.nrel.gov/electricity/2023/technologies
 
 ##### System
 DISCOUNT_RATE = 0.05 # [] 
@@ -42,9 +42,9 @@ H2_LIFETIME = 15 # [years]
 ##### Thermal Storage
 TES_EFF_CHARGE = 1 # [] 
 TES_EFF_DISCHARGE = 1 # []
-TES_MAX_CHARGE_RATE = 1/100 # [1/h] # How do we know this ? Should we optimize for it ? I just came up with this value
+#TES_MAX_CHARGE_RATE = 1/100 # [1/h] # not used now because defined a variable for max power
 TES_LOSS_RATE = 0 # [1/h]
-TES_CAPA_PRICE = 200*TES_MAX_CHARGE_RATE # [$/kWhth]
+TES_CAPA_PRICE = 200 # [$/kWhth]
 TES_LIFETIME = 20 # [years]
 
 ##### Solar PPA

@@ -10,7 +10,6 @@
 # TODO: solve with carbon price
 
 ### Component
-# TODO: make Crate of thermal storage a variable
 # TODO: plots
 # TODO: implement detailed or not in the describe method for components
 
@@ -135,7 +134,7 @@ class System:
         # gridPower is the power seen by the meter, on which the demand charge is computed
         self.gridPower = self.powerConsumption
         for component in self.components:
-            if component.name == 'PVsystem' and not component.onsite:
+            if component.name == 'PVsystem' and not component._parameters['onsite'] :
                 self.gridPower = self.gridPower - component.powerConsumption
         self.powerOpex = self.powerOpex + np.sum([cp.max(self.gridPower[d[0]])*d[1] for d in self.powerDemandPrice])
         np.sum([cp.max(self.powerConsumption[d[0]])*d[1] for d in self.powerDemandPrice])
@@ -525,12 +524,15 @@ class Battery(Component):
                       'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice,
                       'effCharge': effCharge, 'effDischarge': effDischarge}
         # Variables
-        powerInput = cp.Variable(n_timesteps) # kWh, positive when it charges, negative when it discharges
+        powerInputCharge = cp.Variable(n_timesteps) # kWh
+        powerInputDischarge = cp.Variable(n_timesteps)
+        powerInput = powerInputCharge - powerInputDischarge # kWh, positive when it charges, negative when it discharges
         soc = cp.Variable(n_timesteps+1, nonneg=True) # kWh
         energyCapacity = cp.Variable(nonneg=True) # kWh
-        variables = [powerInput, soc, energyCapacity]
+        variables = [powerInputCharge, powerInputDischarge, soc, energyCapacity]
         # Save variables in a dictionary
-        variablesDict = {'powerInput': powerInput, 'soc': soc, 'energyCapacity': energyCapacity}
+        variablesDict = {'powerInput': powerInput, 'powerInputCharge': powerInputCharge, 'powerInputDischarge': powerInputDischarge,
+                         'soc': soc, 'energyCapacity': energyCapacity}
         # Constraints
         constraints = []
         constraints += [-powerInput <= maxDischargeRate * dt * energyCapacity] # maxDischargeRate is defined for an hour
@@ -539,7 +541,7 @@ class Battery(Component):
         constraints += [soc <= socMax * energyCapacity]
         constraints += [soc[0] == socInitial * energyCapacity]
         constraints += [soc[-1] == socFinal * energyCapacity]
-        constraints += [soc[1:] == soc[:-1] + effCharge*cp.pos(powerInput[:-1]) - effDischarge*cp.pos(-powerInput[:-1])] # added efficiency
+        constraints += [soc[1:] == soc[:-1] + effCharge*powerInputCharge - effDischarge*powerInputDischarge] # added efficiency
         # Consumption
         powerConsumption = powerInput # positive consumption (cost added) when it charges, negative (cost avoided) when it discharges
         gasConsumption = np.zeros(n_timesteps)
@@ -560,24 +562,22 @@ class Battery(Component):
         print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self._variablesDict['energyCapacity'].value)} kW")
 
 
-# Add c-rate as variable to optimize
+# Added power capacity to variables to optimize
 class ThermalStorage(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, capacityPrice=None, lossRate=None, 
-                 maxChargeRate=None, effCharge = None, effDischarge = None,
-                 maxDischargeRate=None, socMin=None, socMax=None, socInitial=None, socFinal=None, 
+    def __init__(self, n_timesteps=None, dt=None, capacityPrice=None, 
+                 lossRate=None, effCharge = None, effDischarge = None,
+                 socMin=0, socMax=1, socInitial=0.5, socFinal=0.5, 
                  discRate=None, n_years=None):
         '''
         Inputs:
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
             - capacityPrice: price of capacity in $/kWh
-            - lossRate: rate of energy loss per hour in % of storage capacity
 
-            - maxChargeRate: maximum charge rate in % of storage capacity
+            - lossRate: rate of energy loss per hour in % of storage capacity
             - effCharge: efficiency of the storage when charging
             - effDischarge: efficiency of the storage when discharging
-            - maxDischargeRate: maximum discharge rate in % of storage capacity
 
             - socMin: minimum state of charge in % of storage capacity
             - socMax: maximum state of charge in % of storage capacity
@@ -588,41 +588,45 @@ class ThermalStorage(Component):
             - n_years: lifetime of the component in years
         NB: State of charge soc is in kWh.
         '''
-
-        if maxChargeRate is not None:
-            if maxDischargeRate is None:
-                maxDischargeRate = maxChargeRate
-            if socMin is None:
-                socMin = 0
-            if socMax is None:
-                socMax = 1
-            if socInitial is None:
-                socInitial = 0.5
-            if socFinal is None:
-                socFinal = 0.5
+        # Defined default values directly in def init, as there is no maxChargeRate anymore
+        # if maxChargeRate is not None:
+        #     if maxDischargeRate is None:
+        #         maxDischargeRate = maxChargeRate
+        #     if socMin is None:
+        #         socMin = 0
+        #     if socMax is None:
+        #         socMax = 1
+        #     if socInitial is None:
+        #         socInitial = 0.5
+        #     if socFinal is None:
+        #         socFinal = 0.5
 
         name = 'ThermalStorage'
         typeTransfer = 'Storage'
         # Parameters
         parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal,
-                      'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice,
-                      'effCharge': effCharge, 'effDischarge': effDischarge, 'lossRate': lossRate}
+                      'lossRate': lossRate, 'capacityPrice': capacityPrice,
+                      'effCharge': effCharge, 'effDischarge': effDischarge}
         # Variables
-        heatInput = cp.Variable(n_timesteps) # kWh, positive when it charges, negative when it discharges
+        heatInputCharge = cp.Variable(n_timesteps) # kWh
+        heatInputDischarge = cp.Variable(n_timesteps) # kWh
+        heatInput = heatInputCharge - heatInputDischarge # kWh, positive when it charges, negative when it discharges
         soc = cp.Variable(n_timesteps + 1, nonneg=True) # kWh
         energyCapacity = cp.Variable(nonneg=True) # kWh
-        variables = [heatInput, soc, energyCapacity]
+        powerCapacity = cp.Variable(nonneg=True) # kW
+        variables = [heatInputCharge, heatInputDischarge, soc, energyCapacity]
         # Store variables in a dictionary
-        variablesDict = {'heatInput': heatInput, 'soc': soc, 'energyCapacity': energyCapacity}
+        variablesDict = {'heatInput': heatInput, 'heatInputCharge': heatInputCharge, 'heatInputDischarge': heatInputDischarge,
+                         'soc': soc, 'energyCapacity': energyCapacity, 'powerCapacity': powerCapacity}
         # Constraints
         constraints = []
-        constraints += [-heatInput <= maxDischargeRate * energyCapacity]
-        constraints += [heatInput <= maxChargeRate * energyCapacity]
+        constraints += [-heatInput <= powerCapacity * dt]
+        constraints += [heatInput <= powerCapacity * dt]
         constraints += [soc >= socMin * energyCapacity]
         constraints += [soc <= socMax * energyCapacity]
         constraints += [soc[0] == socInitial * energyCapacity]
         constraints += [soc[-1] == socFinal * energyCapacity]
-        constraints += [soc[1:] == soc[:-1]*(1 - dt*lossRate) + effCharge*cp.pos(heatInput[:-1]) - effDischarge*cp.pos(-heatInput[:-1])] # added efficiency
+        constraints += [soc[1:] == soc[:-1]*(1 - dt*lossRate) + effCharge*heatInputCharge - effDischarge*heatInputDischarge] # added efficiency
         # Consumption
         powerConsumption = np.zeros(n_timesteps)
         gasConsumption = np.zeros(n_timesteps)
@@ -640,20 +644,24 @@ class ThermalStorage(Component):
             for k, v in self._parameters.items():
                 print(f"    {k}: {v}")
         print(f"    Optimal energy capacity: {np.round(self._variablesDict['energyCapacity'].value)} kWh")
-        print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self._variablesDict['energyCapacity'].value)} kW")
+        print(f"    Optimal power capacity: {np.round(self._variablesDict['powerCapacity'].value)} kW")
 
 
 class PVsystem(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, pvLoadProfile=None, capacityPrice=None, ppaPrice=None, averageEmissions=None, discRate=None, n_years=None, onsite=False):
+    def __init__(self, n_timesteps=None, dt=None, pvLoadProfile=None, 
+                 capacityPrice=None, ppaPrice=None, averageEmissions=None, 
+                 discRate=None, n_years=None, onsite=False):
         '''
         Inputs:
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
             - pvLoadProfile: time-indexed electricity available from the PV system, in % of the PV capacity
             - capacityPrice: price of capacity in $/kW
-            - discRate: discount rate in %
+            - ppaPrice: price of electricity obtained through PPA contracts in $/kWh
+            - discRate: discount rate
             - n_years: lifetime of the component in years
+            - onsite: boolean indicating whether the electricity is consumed on site or not
         '''
         # We suppose here that if the facility is not able to consume all the electricity produced by the PV system, the excess is put on the grid for free
         name = 'PVsystem'
