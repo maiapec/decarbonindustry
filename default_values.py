@@ -1,17 +1,17 @@
 ##### System
 DISCOUNT_RATE = 0.055 # [] 
 
-##### Gas Furnace
-FURNACE_EFF = 0.9 # Intermediate value, could be 0.95.
-FURNACE_CAPA_PRICE = 200 # [$/kW] TODO: Find this value.
+##### Natural gas Steam Boiler
+# Source: https://energyinnovation.org/wp-content/uploads/2022/10/Decarbonizing-Low-Temperature-Industrial-Heat-In-The-U.S.-Report-2.pdf
+FURNACE_EFF = 0.95 # [] 
+FURNACE_CAPA_PRICE = 234 # [$/kW]
 FURNACE_LIFETIME = 20 # [years]
 
 ##### Heat Pump
-HP_COP = 3 # Value corresponding to a temperature lift of 50°C. 
-           # Typical values range between 3 and 5.
-           # Source: https://www.sciencedirect.com/science/article/pii/S1364032120309308
-HP_CAPA_PRICE = 1000 # [$/kW] TODO: Find this value.
-HP_LIFETIME = 15 # [years] TODO: Find this value.
+# Source: https://energyinnovation.org/wp-content/uploads/2022/10/Decarbonizing-Low-Temperature-Industrial-Heat-In-The-U.S.-Report-2.pdf
+HP_COP = 3.7 # [] Value corresponding to low temperature processes (80-100°C). Typical values range between 3 and 5.
+HP_CAPA_PRICE = 700 # [$/kW]
+HP_LIFETIME = 15 # [years]
 
 ##### Battery
 
