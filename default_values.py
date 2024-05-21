@@ -1,53 +1,80 @@
-# Data is adapted from the NREL 2023 Annual Technology Baseline.
-# https://atb.nrel.gov/electricity/2023/technologies
-
 ##### System
-DISCOUNT_RATE = 0.05 # [] 
+DISCOUNT_RATE = 0.055 # [] 
 
 ##### Gas Furnace
-FURNACE_EFF = 0.85 # []
-FURNACE_CAPA_PRICE = 200 # [$/kW]
+FURNACE_EFF = 0.9 # Intermediate value, could be 0.95.
+FURNACE_CAPA_PRICE = 200 # [$/kW] TODO: Find this value.
 FURNACE_LIFETIME = 20 # [years]
 
 ##### Heat Pump
-HP_COP = 3 # []
-HP_CAPA_PRICE = 1000 # [$/kW]
-HP_LIFETIME = 15 # [years]
+HP_COP = 3 # Value corresponding to a temperature lift of 50°C. 
+           # Typical values range between 3 and 5.
+           # Source: https://www.sciencedirect.com/science/article/pii/S1364032120309308
+HP_CAPA_PRICE = 1000 # [$/kW] TODO: Find this value.
+HP_LIFETIME = 15 # [years] TODO: Find this value.
 
 ##### Battery
-LION_EFF_CHARGE = 0.85 # []
-LION_EFF_DISCHARGE = 0.85 # []
-LION_MAX_CHARGE_RATE = 1/4 # [1/h]
-LION_CAPA_PRICE = 1587*LION_MAX_CHARGE_RATE # [$/kWhe]
-LION_LIFETIME = 15 # [years]
 
+# Source: Li-ion LFP 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
+LION_EFF_CHARGE = 0.83 # []
+LION_EFF_DISCHARGE = 0.83 # []
+LION_MAX_CHARGE_RATE = 1/4 # [1/h] (Duration of storage: 4 hours)
+LION_CAPA_PRICE = 405 # [$/kWhe]
+LION_LIFETIME = 16 # [years]
+
+# Source: Lead-acid 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
+LEADACID_EFF_CHARGE = 0.77 # []
+LEADACID_EFF_DISCHARGE = 0.77 # []
+LEADACID_MAX_CHARGE_RATE = 1/4 # [1/h] (Duration of storage: 4 hours)
+LEADACID_CAPA_PRICE = 458 # [$/kWhe]
+LEADACID_LIFETIME = 14 # [years]
+
+# Source: Pumped hydro storage 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
 PHYDRO_EFF_CHARGE = 0.8 # []
 PHYDRO_EFF_DISCHARGE = 0.8 # []
-PHYDRO_MAX_CHARGE_RATE = 1/8 # [1/h]
-PHYDRO_CAPA_PRICE = 2250*PHYDRO_MAX_CHARGE_RATE # [$/kWhe]
-PHYDRO_LIFETIME = 15 # [years]
+PHYDRO_MAX_CHARGE_RATE = 1/10 # [1/h]
+PHYDRO_CAPA_PRICE = 279 # [$/kWhe]
+PHYDRO_LIFETIME = 60 # [years]
 
-IRONAIR_EFF_CHARGE = 0.43 # []
-IRONAIR_EFF_DISCHARGE = 0.43 # []
-IRONAIR_MAX_CHARGE_RATE = 1/100 # [1/h]
-IRONAIR_CAPA_PRICE = 1400*IRONAIR_MAX_CHARGE_RATE # [$/kWhe]
-IRONAIR_LIFETIME = 15 # [years]
+# Source: Hydrogen bi-directional fuel-cell (BDFC) storage 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
+H2BDFC_EFF_CHARGE = 0.31 # []
+H2BDFC_EFF_DISCHARGE = 0.31 # []
+H2BDFC_MAX_CHARGE_RATE = 1/24 # [1/h]
+H2BDFC_CAPA_PRICE = 126 # [$/kWhe]
+H2BDFC_LIFETIME = 30 # [years]
 
-H2_EFF_CHARGE = 0.34 # []
-H2_EFF_DISCHARGE = 0.34 # []
-H2_MAX_CHARGE_RATE = 1/720 # [1/h]
-H2_CAPA_PRICE = 2514*H2_MAX_CHARGE_RATE # [$/kWhe]
-H2_LIFETIME = 15 # [years]
+# Iron air?
+# IRONAIR_EFF_CHARGE = 0.43 # []
+# IRONAIR_EFF_DISCHARGE = 0.43 # []
+# IRONAIR_MAX_CHARGE_RATE = 1/100 # [1/h]
+# IRONAIR_CAPA_PRICE = 1400*IRONAIR_MAX_CHARGE_RATE # [$/kWhe]
+# IRONAIR_LIFETIME = 15 # [years]
+
 
 ##### Thermal Storage
-TES_EFF_CHARGE = 1 # [] 
-TES_EFF_DISCHARGE = 1 # []
-#TES_MAX_CHARGE_RATE = 1/100 # [1/h] # not used now because defined a variable for max power
-TES_LOSS_RATE = 0.001 # [1/h]
-TES_ECAPA_PRICE = 10 # [$/kWhth]
-TES_PCAPA_PRICE = 50 # [$/kWth]
-TES_LIFETIME = 20 # [years]
+# Source: 10-hour thermal storage 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
+# NB: 24-hour storage has ECAPA price of 101 $/kWhth and PCAPA price of 1627 $/kWth.
+TES_EFF_CHARGE = 0.5 # [] 
+TES_EFF_DISCHARGE = 0.5 # []
+TES_LOSS_RATE = 0.001 # [1/h] TODO: Find this value.
+TES_ECAPA_PRICE = 166 # [$/kWhth] # Previous values from Aramis was 10
+TES_PCAPA_PRICE = 1466 # [$/kWth] # Previous values from Aramis was 50
+TES_LIFETIME = 34 # [years]
 
-##### Solar PPA
-PV_PPA_PRICE = 0.04 # [$/kWh]
-PV_AVG_EMISSIONS = 0.03 # [kgCO2/kWh] # I came up with this value
+##### Solar
+PV_AVG_EMISSIONS = 0.0553 # [kgCO2/kWh] # Mean life-cycle emissions for c-Si PV.
+                          # Source: https://doi.org/10.1016/j.enpol.2013.10.048
+PV_OFFSITE_PPA_PRICE = 0.04 # [$/kWh] LCOE for class 5 (default) utility-scale PV in 2022. This value is used as the PPA price.
+                               # Source: https://atb.nrel.gov/electricity/2023/technologies
+PV_ONSITE_PCAPA_PRICE = 1900 # [$/kW] Power capacity price for class 5 (default) commercial, mature PV technology in 2022.
+                                # Source: https://atb.nrel.gov/electricity/2023/technologies
+PV_ONSITE_LIFETIME = 25 # [years] or 30
+
+##### Wind
+WIND_AVG_EMISSIONS = 0.015 # [kgCO2/kWh] # Mean life-cycle emissions for onshore wind.
+                           # Source: https://doi.org/10.1111/j.1530-9290.2012.00464.x
+WIND_OFFSITE_PPA_PRICE = 0.03 # [$/kWh] LCOE for class 4 (default) onshore PV in 2022. This value is used as the PPA price.
+                                 # Source: https://atb.nrel.gov/electricity/2023/technologies
+WIND_ONSITE_PCAPA_PRICE = 1550 # [$/kW] Power capacity price for class 4 (default) onshore PV technology in 2022.
+                                  # Source: https://atb.nrel.gov/electricity/2023/technologies
+WIND_ONSITE_LIFETIME = 20 # [years] or 30
