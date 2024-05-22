@@ -399,7 +399,7 @@ class Component:
         self.opex = pwrCons @ powerPrice + gasCons @ gasPrice
     
     
-class NaturalGasFurnace(Component):
+class NaturalGasBoiler(Component):
 
     def __init__(self, n_timesteps=None, dt=None, eff=None, capacityPrice=None, discRate=None, n_years=None):
         '''
@@ -407,12 +407,12 @@ class NaturalGasFurnace(Component):
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
             - capacityPrice: price of capacity in $/kW
-            - eff: efficiency of the furnace in %
+            - eff: efficiency of the boiler in %
             - discRate: discount rate
             - n_years: lifetime of the Component in years
         '''
 
-        name = 'NaturalGasFurnace'
+        name = 'NaturalGasBoiler'
         typeTransfer = 'GasToHeat'
         # Parameters
         parameters = {'capacityPrice': capacityPrice, 'eff': eff}
@@ -468,6 +468,50 @@ class HeatPump(Component):
         variablesDict = {'powerInput': powerInput, 'capacity': capacity}
         # Derived quantities
         heatOutput = COP * powerInput # kWh
+        # Constraints
+        constraints = [heatOutput <= capacity * dt]
+        # Consumption
+        powerConsumption = powerInput
+        gasConsumption = np.zeros(n_timesteps)
+        # Cost
+        capex = capacity * capacityPrice # $
+        CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
+
+        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal capacity: {np.round(self._variablesDict['capacity'].value)} kW")
+
+
+class ElectricBoiler(Component):
+
+    def __init__(self, n_timesteps=None, dt=None, eff=None, capacityPrice=None, discRate=None, n_years=None):
+        '''
+        Inputs:
+            - n_timesteps: number of time steps
+            - dt: interval between time steps in hours
+            - eff: coefficient of performance of the heat pump
+            - capacityPrice: price of capacity in $/kW
+            - discRate: discount rate
+            - n_years: lifetime of the component in years
+        '''
+
+        name = 'ElectricBoiler'
+        typeTransfer = 'ElectricityToHeat'
+        # Parameters
+        parameters = {'capacityPrice': capacityPrice, 'eff': eff}
+        # Variables
+        powerInput = cp.Variable(n_timesteps, nonneg=True) # kWh
+        capacity = cp.Variable(nonneg=True) # kW
+        variables = [powerInput, capacity]
+        # Save variables in a dictionary
+        variablesDict = {'powerInput': powerInput, 'capacity': capacity}
+        # Derived quantities
+        heatOutput = eff * powerInput # kWh
         # Constraints
         constraints = [heatOutput <= capacity * dt]
         # Consumption

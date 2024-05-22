@@ -4,15 +4,21 @@ SELL_BACK_PRICE = 0.0001 # [$/kWh] No source, used to ensure we haveno weird bat
 
 ##### Natural gas Steam Boiler
 # Source: https://energyinnovation.org/wp-content/uploads/2022/10/Decarbonizing-Low-Temperature-Industrial-Heat-In-The-U.S.-Report-2.pdf
-FURNACE_EFF = 0.95 # [] 
-FURNACE_CAPA_PRICE = 234 # [$/kW]
-FURNACE_LIFETIME = 20 # [years]
+GAS_BOILER_EFF = 0.95 # [] 
+GAS_BOILER_CAPA_PRICE = 234 # [$/kW]
+GAS_BOILER_LIFETIME = 20 # [years]
 
 ##### Heat Pump
 # Source: https://energyinnovation.org/wp-content/uploads/2022/10/Decarbonizing-Low-Temperature-Industrial-Heat-In-The-U.S.-Report-2.pdf
 HP_COP = 3.7 # [] Value corresponding to low temperature processes (80-100°C). Typical values range between 3 and 5.
 HP_CAPA_PRICE = 700 # [$/kW]
 HP_LIFETIME = 15 # [years]
+
+##### Electric Boiler
+# Source: https://energyinnovation.org/wp-content/uploads/2022/10/Decarbonizing-Low-Temperature-Industrial-Heat-In-The-U.S.-Report-2.pdf
+ELECTRIC_BOILER_EFF = 0.99
+ELECTRIC_BOILER_CAPA_PRICE = 175 # [$/kW]
+ELECTRIC_BOILER_LIFETIME = 20 # [years]
 
 ##### Battery
 
@@ -50,7 +56,7 @@ H2BDFC_LIFETIME = 30 # [years]
 # NB: 24-hour storage has ECAPA price of 101 $/kWhth and PCAPA price of 1627 $/kWth.
 TES_EFF_CHARGE = 0.5 # [] 
 TES_EFF_DISCHARGE = 0.5 # []
-TES_LOSS_RATE = 0.001 # [1/h] TODO: Find this value.
+TES_LOSS_RATE = 0 # [1/h] TODO: Find this value.
 TES_ECAPA_PRICE = 166 # [$/kWhth] # Previous values from Aramis was 10
 TES_PCAPA_PRICE = 1466 # [$/kWth] # Previous values from Aramis was 50
 TES_LIFETIME = 34 # [years]
