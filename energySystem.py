@@ -29,7 +29,7 @@ def getValue(variable):
 
 class System:
 
-    def __init__(self, name, components=None, timeIndex=None, powerLoad=None, heatLoad=None, powerPrice=None, powerDemandFee=None, gasPrice=None, gridMarginalEmissions=None, gasMarginalEmissions=None):
+    def __init__(self, name, components=None, timeIndex=None, powerLoad=None, heatLoad=None, powerPrice=None, sellBackPrice=None, powerDemandFee=None, gasPrice=None, gridMarginalEmissions=None, gasMarginalEmissions=None):
         self.name = name
         # list of components
         self.components = components
@@ -39,6 +39,7 @@ class System:
         self.powerLoad = powerLoad
         self.heatLoad = heatLoad
         self.powerPrice = powerPrice
+        self.sellBackPrice = sellBackPrice
         self.powerDemandPrice = powerDemandFee
         self.gasPrice = gasPrice
         self.gridMarginalEmissions = gridMarginalEmissions
@@ -130,11 +131,11 @@ class System:
         self._constraints += [self.heatOutput >= 0]
         self._constraints += [self.heatOutput == self.heatLoad] # heat load is met
         # add system wide variables
-        self.powerOpex = cp.pos(self.powerConsumption) @ self.powerPrice
+        self.powerOpex = cp.pos(self.powerConsumption) @ self.powerPrice # not that easy. to do later: cp.pos(-self.powerConsumption) @ self.sellBackPrice
         # gridPower is the power seen by the meter, on which the demand charge is computed
         self.gridPower = self.powerConsumption
         for component in self.components:
-            if component.name == 'PVsystem' and not component._parameters['onsite'] :
+            if (component.name == 'PVsystem' and not component._parameters['onsite']) or component.name == 'Windsystem':
                 self.gridPower = self.gridPower - component.powerConsumption
         self.powerOpex = self.powerOpex + np.sum([cp.max(self.gridPower[d[0]])*d[1] for d in self.powerDemandPrice])
         np.sum([cp.max(self.powerConsumption[d[0]])*d[1] for d in self.powerDemandPrice])
@@ -326,9 +327,9 @@ class System:
         for c in self.components:
             i = self.components.index(c) + 1
             # Power Consumption
-            if c.name == 'PVsystem':
+            if (c.name == 'PVsystem') or (c.name == 'Windsystem'):
                 pwrCons = - self._pivot(getValue(c.powerConsumption)/self.dt) # kWh to kW
-                ttl = 'PVsystem Power Generation'
+                ttl = c.name + ' Power Generation'
             else:
                 pwrCons = self._pivot(getValue(c.powerConsumption)/self.dt) # kWh to kW
                 ttl = f'{c.name} Power Consumption'
@@ -678,6 +679,57 @@ class PVsystem(Component):
             capex = cp.sum(powerOutput) * ppaPrice # In this case capex is already the annualized capex
             CRF = 1
             parameters = {'ppaPrice': ppaPrice, 'pvLoadProfile': pvLoadProfile, 'onsite': onsite}
+        else:
+            raise ValueError("Please provide either a capacity price or a levelized cost of electricity")
+        # Constraints
+        constraints = []
+        # Consumption
+        powerConsumption = - powerOutput
+        gasConsumption = np.zeros(n_timesteps)
+        heatOutput = np.zeros(n_timesteps)
+        
+        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        
+    def describe(self):
+        print(f"Component: {self.name}")
+        if self._parameters is not None:
+            for k, v in self._parameters.items():
+                print(f"    {k}: {v}")
+        print(f"    Optimal power capacity: {np.round(self._variablesDict['capacity'].value/1000, 2)} MW")
+    
+class Windsystem(Component):
+
+    def __init__(self, n_timesteps=None, dt=None, WindLoadProfile=None, capacityPrice=None, ppaPrice=None,
+                 discRate=None, n_years=None):
+        '''
+        Inputs:
+            - n_timesteps: number of time steps
+            - dt: interval between time steps in hours
+            - WindLoadProfile: time-indexed electricity available from the Wind system, in % of the Wind capacity
+            - capacityPrice: price of capacity in $/kW
+            - ppaPrice: price of electricity obtained through PPA contracts in $/kWh
+            - discRate: discount rate
+            - n_years: lifetime of the component in years
+        '''
+        # We suppose here that if the facility is not able to consume all the electricity produced by the Wind system, the excess is put on the grid for free
+        name = 'Windsystem'
+        typeTransfer = 'ElectricityGeneration'
+        # Variables
+        capacity = cp.Variable(nonneg=True) # kW
+        variables = [capacity]
+        # Save variables in a dictionary    
+        variablesDict = {'capacity': capacity}
+        # Derived quantities
+        powerOutput = WindLoadProfile * capacity * dt # kWh
+        # Cost and parameter
+        if capacityPrice is not None and ppaPrice is None:
+            capex = capacity * capacityPrice # $
+            CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
+            parameters = {'capacityPrice': capacityPrice, 'WindLoadProfile': WindLoadProfile}
+        elif ppaPrice is not None and capacityPrice is None:
+            capex = cp.sum(powerOutput) * ppaPrice # In this case capex is already the annualized capex
+            CRF = 1
+            parameters = {'ppaPrice': ppaPrice, 'WindLoadProfile': WindLoadProfile}
         else:
             raise ValueError("Please provide either a capacity price or a levelized cost of electricity")
         # Constraints
