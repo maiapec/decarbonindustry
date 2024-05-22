@@ -45,7 +45,9 @@ class System:
         self.gridMarginalEmissions = gridMarginalEmissions
         self.gasMarginalEmissions = gasMarginalEmissions
         # system wide variables
+        self.netPowerConsumption = None
         self.powerConsumption = None
+        self.powerGeneration = None
         self.gasConsumption = None
         self.heatOutput = None
         self.annualizedCapex = None
@@ -111,7 +113,9 @@ class System:
         # initialize variables and constraints
         self._variables = []
         self._constraints = []
+        self.netPowerConsumption = self.powerLoad
         self.powerConsumption = self.powerLoad
+        self.powerGeneration = 0
         self.gasConsumption = 0
         self.heatOutput = 0
         self.annualizedCapex = 0
@@ -122,27 +126,33 @@ class System:
         for component in self.components:
             self._variables += component._variables
             self._constraints += component._constraints # Inner components constraints
-            self.powerConsumption = self.powerConsumption + component.powerConsumption
+            self.netPowerConsumption = self.netPowerConsumption + component.powerConsumption
+            if component.typeTransfer == 'ElectricityGeneration':
+                self.powerGeneration = self.powerGeneration - component.powerConsumption
+            elif component.typeTransfer == 'Battery':
+                self.powerGeneration = self.powerGeneration + component._variablesDict['powerInputDischarge']
+                self.powerConsumption = self.powerConsumption + component._variablesDict['powerInputCharge']
+            else:
+                self.powerConsumption = self.powerConsumption + component.powerConsumption
             self.gasConsumption = self.gasConsumption + component.gasConsumption
             self.heatOutput = self.heatOutput + component.heatOutput
-            self.annualizedCapex = self.annualizedCapex + component.capex*component.CRF
+            self.annualizedCapex = self.annualizedCapex + component.capex*component.CRF 
         # add system wide constraints
         self._constraints += [self.gasConsumption  >= 0]
         self._constraints += [self.heatOutput >= 0]
         self._constraints += [self.heatOutput == self.heatLoad] # heat load is met
         # add system wide variables
-        self.powerOpex = cp.pos(self.powerConsumption) @ self.powerPrice # not that easy. to do later: cp.pos(-self.powerConsumption) @ self.sellBackPrice
+        self.powerOpex = cp.pos(self.netPowerConsumption) @ (self.powerPrice - self.sellBackPrice) + self.netPowerConsumption @ self.sellBackPrice
         # gridPower is the power seen by the meter, on which the demand charge is computed
-        self.gridPower = self.powerConsumption
+        self.gridPower = self.netPowerConsumption
         for component in self.components:
-            if (component.name == 'PVsystem' and not component._parameters['onsite']) or component.name == 'Windsystem':
+            if component.typeTransfer == 'ElectricityGeneration' and not component._parameters['onsite']:
                 self.gridPower = self.gridPower - component.powerConsumption
         self.powerOpex = self.powerOpex + np.sum([cp.max(self.gridPower[d[0]])*d[1] for d in self.powerDemandPrice])
-        np.sum([cp.max(self.powerConsumption[d[0]])*d[1] for d in self.powerDemandPrice])
         # d[0] is a mask for the demand periods (such as peak / offpeak), d[1] is the price
         self.gasOpex = cp.pos(self.gasConsumption) @ self.gasPrice
         self.totalCost = self.powerOpex + self.gasOpex + self.annualizedCapex
-        self.powerOperationalEmissions = cp.pos(self.powerConsumption) @ self.gridMarginalEmissions
+        self.powerOperationalEmissions = cp.pos(self.netPowerConsumption) @ self.gridMarginalEmissions
         self.gasOperationalEmissions = cp.pos(self.gasConsumption) @ self.gasMarginalEmissions
         self.totalEmissions = self.powerOperationalEmissions + self.gasOperationalEmissions
         # set objective
@@ -175,7 +185,7 @@ class System:
         if self._status != "optimal":
             print("Model not solved")
         else:
-            pwrCons = getValue(self.powerConsumption)
+            pwrCons = getValue(self.netPowerConsumption)
             alpha = self.powerLoad.sum() / pwrCons.sum()
             self.LCOH = (self.gasOpex.value + (1-alpha) * self.powerOpex.value + (1-alpha)*self.annualizedCapex) / self.heatLoad.sum()
             self.LCOE = (alpha * self.powerOpex.value + alpha*self.annualizedCapex) / self.powerLoad.sum()
@@ -199,7 +209,7 @@ class System:
         print(f"Status: {self._status}")
         print("")
         if self._status == "optimal":
-            pwrCons = getValue(self.powerConsumption)
+            pwrCons = getValue(self.netPowerConsumption)
             gasCons = getValue(self.gasConsumption)
             print(f"Annual power consumption: {np.round(pwrCons.sum()/1000)} MWh")
             print(f"Annual gas consumption: {np.round(gasCons.sum()/1000)} MWh")
@@ -235,7 +245,7 @@ class System:
         pwr = pd.DataFrame(self.powerLoad, index=self.timeIndex, columns=['Power Load'])
         for c in self.components:
             pwr[c.name] = getValue(c.powerConsumption)
-        pwr['Total Power Consumption'] = getValue(self.powerConsumption)
+        pwr['Total Power Consumption'] = getValue(self.netPowerConsumption)
         pwr = pwr / self.dt # kWh to kW
         pwr['Marginal Power Price'] = self.powerPrice
         pwr['Marginal Power Emissions'] = self.gridMarginalEmissions
@@ -343,7 +353,7 @@ class System:
             axs[i, 1].set_xlabel('')
             axs[i, 1].set_ylabel('')
         # Total Consumptions
-        sns.heatmap(self._pivot(getValue(self.powerConsumption)/self.dt), ax=axs[-1, 0], cmap=cmap, cbar_kws={'label': 'kWe'}) # kWh to kW
+        sns.heatmap(self._pivot(getValue(self.netPowerConsumption)/self.dt), ax=axs[-1, 0], cmap=cmap, cbar_kws={'label': 'kWe'}) # kWh to kW
         axs[-1, 0].set_title('Power bought from Grid')
         axs[-1, 0].set_xlabel('Date')
         axs[-1, 0].set_ylabel('Time')
@@ -516,7 +526,7 @@ class Battery(Component):
             if socFinal is None:
                 socFinal = 0.5
 
-        typeTransfer = 'Storage'
+        typeTransfer = 'Battery'
         # Parameters
         parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal,
                       'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice,
@@ -700,7 +710,7 @@ class PVsystem(Component):
 class Windsystem(Component):
 
     def __init__(self, n_timesteps=None, dt=None, WindLoadProfile=None, capacityPrice=None, ppaPrice=None,
-                 discRate=None, n_years=None):
+                 discRate=None, n_years=None, onsite=False):
         '''
         Inputs:
             - n_timesteps: number of time steps
@@ -710,6 +720,7 @@ class Windsystem(Component):
             - ppaPrice: price of electricity obtained through PPA contracts in $/kWh
             - discRate: discount rate
             - n_years: lifetime of the component in years
+            - onsite: boolean indicating whether the electricity is consumed on site or not
         '''
         # We suppose here that if the facility is not able to consume all the electricity produced by the Wind system, the excess is put on the grid for free
         name = 'Windsystem'
@@ -725,11 +736,11 @@ class Windsystem(Component):
         if capacityPrice is not None and ppaPrice is None:
             capex = capacity * capacityPrice # $
             CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
-            parameters = {'capacityPrice': capacityPrice, 'WindLoadProfile': WindLoadProfile}
+            parameters = {'capacityPrice': capacityPrice, 'WindLoadProfile': WindLoadProfile, 'onsite': onsite}
         elif ppaPrice is not None and capacityPrice is None:
             capex = cp.sum(powerOutput) * ppaPrice # In this case capex is already the annualized capex
             CRF = 1
-            parameters = {'ppaPrice': ppaPrice, 'WindLoadProfile': WindLoadProfile}
+            parameters = {'ppaPrice': ppaPrice, 'WindLoadProfile': WindLoadProfile, 'onsite': onsite}
         else:
             raise ValueError("Please provide either a capacity price or a levelized cost of electricity")
         # Constraints
