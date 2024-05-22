@@ -43,13 +43,6 @@ H2BDFC_MAX_CHARGE_RATE = 1/24 # [1/h]
 H2BDFC_CAPA_PRICE = 126 # [$/kWhe]
 H2BDFC_LIFETIME = 30 # [years]
 
-# Iron air?
-# IRONAIR_EFF_CHARGE = 0.43 # []
-# IRONAIR_EFF_DISCHARGE = 0.43 # []
-# IRONAIR_MAX_CHARGE_RATE = 1/100 # [1/h]
-# IRONAIR_CAPA_PRICE = 1400*IRONAIR_MAX_CHARGE_RATE # [$/kWhe]
-# IRONAIR_LIFETIME = 15 # [years]
-
 
 ##### Thermal Storage
 # Source: 10-hour thermal storage 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance

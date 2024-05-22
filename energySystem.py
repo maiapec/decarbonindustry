@@ -29,7 +29,7 @@ def getValue(variable):
 
 class System:
 
-    def __init__(self, name, components=None, timeIndex=None, powerLoad=None, heatLoad=None, powerPrice=None, powerDemandFee=None, gasPrice=None, powerMarginalEmissions=None, gasMarginalEmissions=None):
+    def __init__(self, name, components=None, timeIndex=None, powerLoad=None, heatLoad=None, powerPrice=None, powerDemandFee=None, gasPrice=None, gridMarginalEmissions=None, gasMarginalEmissions=None):
         self.name = name
         # list of components
         self.components = components
@@ -41,7 +41,7 @@ class System:
         self.powerPrice = powerPrice
         self.powerDemandPrice = powerDemandFee
         self.gasPrice = gasPrice
-        self.powerMarginalEmissions = powerMarginalEmissions
+        self.gridMarginalEmissions = gridMarginalEmissions
         self.gasMarginalEmissions = gasMarginalEmissions
         # system wide variables
         self.powerConsumption = None
@@ -51,8 +51,8 @@ class System:
         self.powerOpex = None
         self.gasOpex = None
         self.totalCost = None
-        self.powerEmissions = None
-        self.gasEmissions = None
+        self.powerOperationalEmissions = None
+        self.gasOperationalEmissions = None
         self.totalEmissions = None
         self.LCOE = None
         self.LCOH = None
@@ -81,19 +81,19 @@ class System:
     def setGasPrice(self, gasPrice):
         self.gasPrice = gasPrice
     
-    def setPowerEmissions(self, powerEmissions):
-        self.powerEmissions = powerEmissions
+    def setPowerOperationalEmissions(self, powerOperationalEmissions):
+        self.powerOperationalEmissions = powerOperationalEmissions
     
-    def setGasEmissions(self, gasEmissions):
-        self.gasEmissions = gasEmissions
+    def setGasOperationalEmissions(self, gasOperationalEmissions):
+        self.gasOperationalEmissions = gasOperationalEmissions
     
-    def setTimeSeries(self, powerLoad, heatLoad, powerPrice, gasPrice, powerEmissions, gasEmissions):
+    def setTimeSeries(self, powerLoad, heatLoad, powerPrice, gasPrice, powerOperationalEmissions, gasOperationalEmissions):
         self.powerLoad = powerLoad
         self.heatLoad = heatLoad
         self.powerPrice = powerPrice
         self.gasPrice = gasPrice
-        self.powerEmissions = powerEmissions
-        self.gasEmissions = gasEmissions
+        self.powerOperationalEmissions = powerOperationalEmissions
+        self.gasOperationalEmissions = gasOperationalEmissions
     
     def addComponent(self, component):
         if self.components is None:
@@ -114,7 +114,7 @@ class System:
         self.gasConsumption = 0
         self.heatOutput = 0
         self.annualizedCapex = 0
-        self.powerEmissions = 0
+        self.powerOperationalEmissions = 0
         # add components variables and constraints
         # add components power and gas consumption and heat generation
         # add components capex
@@ -141,12 +141,9 @@ class System:
         # d[0] is a mask for the demand periods (such as peak / offpeak), d[1] is the price
         self.gasOpex = cp.pos(self.gasConsumption) @ self.gasPrice
         self.totalCost = self.powerOpex + self.gasOpex + self.annualizedCapex
-        self.powerEmissions = cp.pos(self.powerConsumption) @ self.powerMarginalEmissions
-        for component in self.components:
-            if component.name == 'PVsystem':
-                self.powerEmissions += component.emissions
-        self.gasEmissions = cp.pos(self.gasConsumption) @ self.gasMarginalEmissions
-        self.totalEmissions = self.powerEmissions + self.gasEmissions
+        self.powerOperationalEmissions = cp.pos(self.powerConsumption) @ self.gridMarginalEmissions
+        self.gasOperationalEmissions = cp.pos(self.gasConsumption) @ self.gasMarginalEmissions
+        self.totalEmissions = self.powerOperationalEmissions + self.gasOperationalEmissions
         # set objective
         if objective == 'cost':
             # minimize cost subject to total emissions cap
@@ -181,8 +178,8 @@ class System:
             alpha = self.powerLoad.sum() / pwrCons.sum()
             self.LCOH = (self.gasOpex.value + (1-alpha) * self.powerOpex.value + (1-alpha)*self.annualizedCapex) / self.heatLoad.sum()
             self.LCOE = (alpha * self.powerOpex.value + alpha*self.annualizedCapex) / self.powerLoad.sum()
-            self.CIH = (self.gasEmissions.value + (1-alpha) * self.powerEmissions.value) / self.heatLoad.sum()
-            self.CIE = alpha * self.powerEmissions.value / self.powerLoad.sum()
+            self.CIH = (self.gasOperationalEmissions.value + (1-alpha) * self.powerOperationalEmissions.value) / self.heatLoad.sum()
+            self.CIE = alpha * self.powerOperationalEmissions.value / self.powerLoad.sum()
     
     def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False):
         self._build_model(objective, emissionsCap, costCap)
@@ -218,14 +215,14 @@ class System:
             print(f"Annual heat load: {np.round(self.heatLoad.sum()/1000)} MWh")
             print(f"Average supply power price: {np.round(self.powerPrice.mean(), 3)} $/kWh")
             print(f"Average supply gas price: {np.round(self.gasPrice.mean(), 3)} $/kWh")
-            print(f"Average supply power emissions: {np.round(self.powerMarginalEmissions.mean(), 3)} kgCO2/kWhe")
+            print(f"Average supply power emissions: {np.round(self.gridMarginalEmissions.mean(), 3)} kgCO2/kWhe")
             print(f"Average supply gas emissions: {np.round(self.gasMarginalEmissions.mean(), 3)} kgCO2/kWhth")
             if self._status == "optimal":
                 print(f"Annualized capex: {np.round(self.annualizedCapex.value/1e6, 3)} M$")
                 print(f"Power opex: {np.round(self.powerOpex.value/1e6, 3)} M$")
                 print(f"Gas opex: {np.round(self.gasOpex.value/1e6, 3)} M$")
-                print(f"Total power emissions: {np.round(self.powerEmissions.value.sum()/1e6, 2)} MtonCO2")
-                print(f"Total gas emissions: {np.round(self.gasEmissions.value.sum()/1e6, 2)} MtonCO2")
+                print(f"Total power emissions: {np.round(self.powerOperationalEmissions.value.sum()/1e6, 2)} MtonCO2")
+                print(f"Total gas emissions: {np.round(self.gasOperationalEmissions.value.sum()/1e6, 2)} MtonCO2")
 
     def _pivot(self, timeSeries):
         df = pd.DataFrame(timeSeries, index=self.timeIndex)
@@ -240,7 +237,7 @@ class System:
         pwr['Total Power Consumption'] = getValue(self.powerConsumption)
         pwr = pwr / self.dt # kWh to kW
         pwr['Marginal Power Price'] = self.powerPrice
-        pwr['Marginal Power Emissions'] = self.powerMarginalEmissions
+        pwr['Marginal Power Emissions'] = self.gridMarginalEmissions
         return pwr
     
     def getHeatDataFrame(self):
@@ -649,8 +646,7 @@ class ThermalStorage(Component):
 
 class PVsystem(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, pvLoadProfile=None, 
-                 capacityPrice=None, ppaPrice=None, averageEmissions=None, 
+    def __init__(self, n_timesteps=None, dt=None, pvLoadProfile=None, capacityPrice=None, ppaPrice=None,
                  discRate=None, n_years=None, onsite=False):
         '''
         Inputs:
@@ -690,12 +686,8 @@ class PVsystem(Component):
         powerConsumption = - powerOutput
         gasConsumption = np.zeros(n_timesteps)
         heatOutput = np.zeros(n_timesteps)
-        # Emissions
-        emissions = cp.sum(powerOutput) * averageEmissions
         
         super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
-
-        self.emissions = emissions
         
     def describe(self):
         print(f"Component: {self.name}")
@@ -703,4 +695,3 @@ class PVsystem(Component):
             for k, v in self._parameters.items():
                 print(f"    {k}: {v}")
         print(f"    Optimal power capacity: {np.round(self._variablesDict['capacity'].value/1000, 2)} MW")
-        print(f"    Annual emissions: {np.round(self.emissions.value/1e6, 2)} MtonCO2")
