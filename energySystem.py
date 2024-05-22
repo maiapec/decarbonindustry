@@ -203,7 +203,7 @@ class System:
             print(f"Annual power consumption: {np.round(pwrCons.sum()/1000)} MWh")
             print(f"Annual gas consumption: {np.round(gasCons.sum()/1000)} MWh")
             print(f"Annual cost: {np.round(self.totalCost.value/1e6, 3)} M$")
-            print(f"Annual emissions: {np.round(self.totalEmissions.value/1e6, 2)} MtonCO2")
+            print(f"Annual operational emissions: {np.round(self.totalEmissions.value/1e6, 2)} MtonCO2")
             print(f"LCOE (Electricity): {np.round(self.LCOE.value, 3)} $/kWh")
             print(f"LCOH (Heat): {np.round(self.LCOH.value, 3)} $/kWh")
             print(f"Carbon Intensity of Electricity: {np.round(self.CIE, 3)} kgCO2/kWhe")
