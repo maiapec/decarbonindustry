@@ -145,11 +145,11 @@ class System:
         # add system wide variables
         self.powerOpex = cp.pos(self.netPowerConsumption) @ (self.powerPrice - self.sellBackPrice) + self.netPowerConsumption @ self.sellBackPrice
         # gridPower is the power seen by the meter, on which the demand charge is computed
-        self.gridPower = self.netPowerConsumption
+        self.gridPower = self.powerConsumption
         for component in self.components:
-            if component.typeTransfer == 'ElectricityGeneration' and not component._parameters['onsite']:
-                self.gridPower = self.gridPower - component.powerConsumption
-        self.powerOpex = self.powerOpex + np.sum([cp.max(self.gridPower[d[0]])*d[1] for d in self.powerDemandPrice])
+            if component.typeTransfer == 'ElectricityGeneration' and component._parameters['onsite']:
+                self.gridPower = self.gridPower + component.powerConsumption
+        self.powerOpex = self.powerOpex + np.sum([cp.max(cp.pos(self.gridPower[d[0]]))*d[1] for d in self.powerDemandPrice])
         # d[0] is a mask for the demand periods (such as peak / offpeak), d[1] is the price
         self.gasOpex = cp.pos(self.gasConsumption) @ self.gasPrice
         self.totalCost = self.powerOpex + self.gasOpex + self.annualizedCapex
@@ -176,8 +176,8 @@ class System:
             print("Model not solved")
         else:  
             energyCons = getValue(self.powerLoad + self.heatLoad)
-            self.LCOenergy = self.totalCost / energyCons.sum()
-            self.CIenergy = self.totalEmissions / energyCons.sum()
+            self.LCOenergy = getValue(self.totalCost) / energyCons.sum()
+            self.CIenergy = getValue(self.totalEmissions) / energyCons.sum()
     
     def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False):
         self._build_model(objective, emissionsCap, costCap)
@@ -196,12 +196,12 @@ class System:
             gasCons = getValue(self.gasConsumption)
             print("Components:")
             print(" | ".join([c.name for c in self.components]))
-            print(f"Annual loads : power {np.round(self.powerLoad.sum()/1000)} MWh | heat{np.round(self.heatLoad.sum()/1000)} MWh")
+            print(f"Annual loads : power {np.round(self.powerLoad.sum()/1000)} MWh | heat {np.round(self.heatLoad.sum()/1000)} MWh")
             print(f"Annual consumptions : power {np.round(pwrCons.sum()/1000)} MWh | net power {np.round(netPwrCons.sum()/1000)} MWh | gas {np.round(gasCons.sum()/1000)} MWh")
             print(f"Annual cost : {np.round(self.totalCost.value/1e6, 3)} M$")
             print(f"Annual operational emissions : {np.round(self.totalEmissions.value/1e6, 2)} MtonCO2")
-            print(f"LCOE (Energy) : {np.round(self.LCOenergy, 3)} $/kWh")
-            print(f"Carbon Intensity of Energy : {np.round(self.CIenergy, 3)} kgCO2/kWh")
+            print(f"LCOE (Energy) : {np.round(self.LCOenergy, 3)} $/kWh of final energy consumption")
+            print(f"Carbon Intensity of Energy : {np.round(self.CIenergy, 3)} kgCO2/kWh of final energy consumption")
 
         if detailed:
             print(f"Runs from {self.timeIndex[0]} to {self.timeIndex[-1]}")
@@ -222,6 +222,7 @@ class System:
         pwr = pwr / self.dt # kWh to kW
         pwr['Marginal Power Price'] = self.powerPrice
         pwr['Marginal Power Emissions'] = self.gridMarginalEmissions
+        pwr['Grid Power'] = getValue(self.gridPower)
         return pwr
     
     def getHeatDataFrame(self):
@@ -418,12 +419,13 @@ class NaturalGasBoiler(Component):
 
 class HeatPump(Component):
 
-    def __init__(self, n_timesteps=None, dt=None, COP=None, capacityPrice=None, discRate=None, n_years=None):
+    def __init__(self, n_timesteps=None, dt=None, COP=None, ramp_rate=None, capacityPrice=None, discRate=None, n_years=None):
         '''
         Inputs:
             - n_timesteps: number of time steps
             - dt: interval between time steps in hours
             - COP: coefficient of performance of the heat pump
+            - ramp_rate: ramp rate in % of capacity per hour
             - capacityPrice: price of capacity in $/kW
             - discRate: discount rate
             - n_years: lifetime of the component in years
@@ -442,7 +444,7 @@ class HeatPump(Component):
         # Derived quantities
         heatOutput = COP * powerInput # kWh
         # Constraints
-        constraints = [heatOutput <= capacity * dt]
+        constraints = [heatOutput <= capacity * dt, cp.abs(heatOutput[1:] - heatOutput[:-1]) / dt <= ramp_rate * capacity * dt]
         # Consumption
         powerConsumption = powerInput
         gasConsumption = np.zeros(n_timesteps)
@@ -549,8 +551,8 @@ class Battery(Component):
                       'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice,
                       'effCharge': effCharge, 'effDischarge': effDischarge}
         # Variables
-        powerInputCharge = cp.Variable(n_timesteps) # kWh
-        powerInputDischarge = cp.Variable(n_timesteps)
+        powerInputCharge = cp.Variable(n_timesteps, nonneg=True) # kWh
+        powerInputDischarge = cp.Variable(n_timesteps, nonneg=True)
         powerInput = powerInputCharge - powerInputDischarge # kWh, positive when it charges, negative when it discharges
         soc = cp.Variable(n_timesteps+1, nonneg=True) # kWh
         energyCapacity = cp.Variable(nonneg=True) # kWh
@@ -566,7 +568,7 @@ class Battery(Component):
         constraints += [soc <= socMax * energyCapacity]
         constraints += [soc[0] == socInitial * energyCapacity]
         constraints += [soc[-1] == socFinal * energyCapacity]
-        constraints += [soc[1:] == soc[:-1] + effCharge*powerInputCharge - effDischarge*powerInputDischarge] # added efficiency
+        constraints += [soc[1:] == soc[:-1] + effCharge*powerInputCharge - powerInputDischarge/effDischarge] # added efficiency
         # Consumption
         powerConsumption = powerInput # positive consumption (cost added) when it charges, negative (cost avoided) when it discharges
         gasConsumption = np.zeros(n_timesteps)
@@ -613,18 +615,6 @@ class ThermalStorage(Component):
             - n_years: lifetime of the component in years
         NB: State of charge soc is in kWh.
         '''
-        # Defined default values directly in def init, as there is no maxChargeRate anymore
-        # if maxChargeRate is not None:
-        #     if maxDischargeRate is None:
-        #         maxDischargeRate = maxChargeRate
-        #     if socMin is None:
-        #         socMin = 0
-        #     if socMax is None:
-        #         socMax = 1
-        #     if socInitial is None:
-        #         socInitial = 0.5
-        #     if socFinal is None:
-        #         socFinal = 0.5
 
         name = 'ThermalStorage'
         typeTransfer = 'Storage'
@@ -633,8 +623,8 @@ class ThermalStorage(Component):
                       'lossRate': lossRate, 'energyCapacityPrice': energyCapacityPrice, 'powerCapacityPrice': powerCapacityPrice,
                       'effCharge': effCharge, 'effDischarge': effDischarge}
         # Variables
-        heatInputCharge = cp.Variable(n_timesteps) # kWh
-        heatInputDischarge = cp.Variable(n_timesteps) # kWh
+        heatInputCharge = cp.Variable(n_timesteps, nonneg=True) # kWh
+        heatInputDischarge = cp.Variable(n_timesteps, nonneg=True) # kWh
         heatInput = heatInputCharge - heatInputDischarge # kWh, positive when it charges, negative when it discharges
         soc = cp.Variable(n_timesteps + 1, nonneg=True) # kWh
         energyCapacity = cp.Variable(nonneg=True) # kWh
@@ -651,7 +641,7 @@ class ThermalStorage(Component):
         constraints += [soc <= socMax * energyCapacity]
         constraints += [soc[0] == socInitial * energyCapacity]
         constraints += [soc[-1] == socFinal * energyCapacity]
-        constraints += [soc[1:] == soc[:-1]*(1 - dt*lossRate) + effCharge*heatInputCharge - effDischarge*heatInputDischarge] # added efficiency
+        constraints += [soc[1:] == soc[:-1]*(1 - dt*lossRate) + effCharge*heatInputCharge - heatInputDischarge/effDischarge] # added efficiency
         # Consumption
         powerConsumption = np.zeros(n_timesteps)
         gasConsumption = np.zeros(n_timesteps)

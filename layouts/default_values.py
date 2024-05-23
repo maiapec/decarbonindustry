@@ -1,3 +1,5 @@
+import numpy as np
+
 ##### System
 DISCOUNT_RATE = 0.055 # []
 SELL_BACK_PRICE = 0.0001 # [$/kWh] No source, used to ensure we haveno weird battery moves.
@@ -13,6 +15,7 @@ GAS_BOILER_LIFETIME = 20 # [years]
 HP_COP = 3.7 # [] Value corresponding to low temperature processes (80-100°C). Typical values range between 3 and 5.
 HP_CAPA_PRICE = 700 # [$/kW]
 HP_LIFETIME = 15 # [years]
+HP_RAMP_RATE = 1 # [1/h] Source: https://repository.tudelft.nl/islandora/object/uuid%3A25adc273-6d05-4a98-9319-be64d8e30bb8
 
 ##### Electric Boiler
 # Source: https://energyinnovation.org/wp-content/uploads/2022/10/Decarbonizing-Low-Temperature-Industrial-Heat-In-The-U.S.-Report-2.pdf
@@ -23,29 +26,29 @@ ELECTRIC_BOILER_LIFETIME = 20 # [years]
 ##### Battery
 
 # Source: Li-ion LFP 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
-LION_EFF_CHARGE = 0.83 # []
-LION_EFF_DISCHARGE = 0.83 # []
+LION_EFF_CHARGE = np.sqrt(0.83) # []
+LION_EFF_DISCHARGE = np.sqrt(0.83) # []
 LION_MAX_CHARGE_RATE = 1/4 # [1/h] (Duration of storage: 4 hours)
 LION_CAPA_PRICE = 405 # [$/kWhe]
 LION_LIFETIME = 16 # [years]
 
 # Source: Lead-acid 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
-LEADACID_EFF_CHARGE = 0.77 # []
-LEADACID_EFF_DISCHARGE = 0.77 # []
+LEADACID_EFF_CHARGE = np.sqrt(0.77) # []
+LEADACID_EFF_DISCHARGE = np.sqrt(0.77) # []
 LEADACID_MAX_CHARGE_RATE = 1/4 # [1/h] (Duration of storage: 4 hours)
 LEADACID_CAPA_PRICE = 458 # [$/kWhe]
 LEADACID_LIFETIME = 14 # [years]
 
 # Source: Pumped hydro storage 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
-PHYDRO_EFF_CHARGE = 0.8 # []
-PHYDRO_EFF_DISCHARGE = 0.8 # []
+PHYDRO_EFF_CHARGE = np.sqrt(0.8) # []
+PHYDRO_EFF_DISCHARGE = np.sqrt(0.8) # []
 PHYDRO_MAX_CHARGE_RATE = 1/10 # [1/h]
 PHYDRO_CAPA_PRICE = 279 # [$/kWhe]
 PHYDRO_LIFETIME = 60 # [years]
 
 # Source: Hydrogen bi-directional fuel-cell (BDFC) storage 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
-H2BDFC_EFF_CHARGE = 0.31 # []
-H2BDFC_EFF_DISCHARGE = 0.31 # []
+H2BDFC_EFF_CHARGE = np.sqrt(0.31) # []
+H2BDFC_EFF_DISCHARGE = np.sqrt(0.31) # []
 H2BDFC_MAX_CHARGE_RATE = 1/24 # [1/h]
 H2BDFC_CAPA_PRICE = 126 # [$/kWhe]
 H2BDFC_LIFETIME = 30 # [years]
@@ -54,11 +57,11 @@ H2BDFC_LIFETIME = 30 # [years]
 ##### Thermal Storage
 # Source: 10-hour thermal storage 2023 estimates from https://www.pnnl.gov/ESGC-cost-performance
 # NB: 24-hour storage has ECAPA price of 101 $/kWhth and PCAPA price of 1627 $/kWth.
-TES_EFF_CHARGE = 0.5 # [] 
-TES_EFF_DISCHARGE = 0.5 # []
+TES_EFF_CHARGE = np.sqrt(0.95) # [] Discounted value from rondo. could we use that ? Otherwise it's never gonna be used i think ...
+TES_EFF_DISCHARGE = np.sqrt(0.95) # [] Discounted value from rondo. could we use that ? Otherwise it's never gonna be used i think ...
 TES_LOSS_RATE = 0 # [1/h] TODO: Find this value.
-TES_ECAPA_PRICE = 166 # [$/kWhth] # Previous values from Aramis was 10
-TES_PCAPA_PRICE = 1466 # [$/kWth] # Previous values from Aramis was 50
+TES_ECAPA_PRICE = 156 # [$/kWhth] # I think it is 156 but I may be wrong !
+TES_PCAPA_PRICE = 1466 # [$/kWth]
 TES_LIFETIME = 34 # [years]
 
 ##### Solar
