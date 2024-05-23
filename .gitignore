@@ -1,2 +1,9 @@
 .DS_Store
 __pycache__/
+layouts/.DS_Store
+layouts/EWELD/.DS_Store
+layouts/EWELD/Electricity Consumption/.DS_Store
+layouts/EWELD/Electricity Consumption/C/.DS_Store
+layouts/__pycache__/
+layouts/power_grid/.DS_Store
+layouts/weather_files/.DS_Store
