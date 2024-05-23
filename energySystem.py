@@ -57,10 +57,12 @@ class System:
         self.powerOperationalEmissions = None
         self.gasOperationalEmissions = None
         self.totalEmissions = None
-        self.LCOE = None
-        self.LCOH = None
-        self.CIE = None # Carbon Intensity of Electricity
-        self.CIH = None # Carbon Intensity of Heat
+        self.LCOenergy = None
+        self.LCOelectricity = None
+        self.LCOheat = None
+        self.CIenergy = None # Carbon Intensity of Energy
+        self.CIelectricity = None # Carbon Intensity of Energy
+        self.CIheat = None # Carbon Intensity of Heat
         # optimization model
         self._variables = None
         self._constraints = None
@@ -130,8 +132,7 @@ class System:
             if component.typeTransfer == 'ElectricityGeneration':
                 self.powerGeneration = self.powerGeneration - component.powerConsumption
             elif component.typeTransfer == 'Battery':
-                self.powerGeneration = self.powerGeneration + component._variablesDict['powerInputDischarge']
-                self.powerConsumption = self.powerConsumption + component._variablesDict['powerInputCharge']
+                self.powerConsumption = self.powerConsumption + component._variablesDict['powerInputCharge'] - component._variablesDict['powerInputDischarge']
             else:
                 self.powerConsumption = self.powerConsumption + component.powerConsumption
             self.gasConsumption = self.gasConsumption + component.gasConsumption
@@ -170,27 +171,13 @@ class System:
         self._model = cp.Problem(self._objective, self._constraints)
     
     def _computeMetrics(self):
-        # problem : how to assign power and gas consumption to heat and electricity consumption
-        # especially if there is storage
-        # one approach
-        # 1. assign all gas cost to heat generation
-        # 2. compute alpha = annual power load (as power) / annual power consumption
-        #    assign alpha * power cost to power load and (1-alpha) * power cost to heat generation
-        # 3. LCOH = (gas cost + (1-alpha) * power cost) / annual heat load
-        # 4. LCOE = alpha * power cost / annual power load
-        # What about CAPEX ? could assign using the same method
-        # Not very satisfying, heat production device should only be assigned to heat
-        # But for now will do
-        # Same approach for emissions
+        # how to do LCOelec, LCOheat and same for emissions ?
         if self._status != "optimal":
             print("Model not solved")
-        else:
-            pwrCons = getValue(self.netPowerConsumption)
-            alpha = self.powerLoad.sum() / pwrCons.sum()
-            self.LCOH = (self.gasOpex.value + (1-alpha) * self.powerOpex.value + (1-alpha)*self.annualizedCapex) / self.heatLoad.sum()
-            self.LCOE = (alpha * self.powerOpex.value + alpha*self.annualizedCapex) / self.powerLoad.sum()
-            self.CIH = (self.gasOperationalEmissions.value + (1-alpha) * self.powerOperationalEmissions.value) / self.heatLoad.sum()
-            self.CIE = alpha * self.powerOperationalEmissions.value / self.powerLoad.sum()
+        else:  
+            energyCons = getValue(self.powerLoad + self.heatLoad)
+            self.LCOenergy = self.totalCost / energyCons.sum()
+            self.CIenergy = self.totalEmissions / energyCons.sum()
     
     def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False):
         self._build_model(objective, emissionsCap, costCap)
@@ -203,37 +190,23 @@ class System:
     
     def describe(self, detailed=False):
         print(f"System: {self.name}")
-        print(f"{len(self.components)} component(s)")
-        for c in self.components:
-            c.describe()
-        print(f"Status: {self._status}")
-        print("")
         if self._status == "optimal":
-            pwrCons = getValue(self.netPowerConsumption)
+            pwrCons = getValue(self.powerConsumption)
+            netPwrCons = getValue(self.netPowerConsumption)
             gasCons = getValue(self.gasConsumption)
-            print(f"Annual power consumption: {np.round(pwrCons.sum()/1000)} MWh")
-            print(f"Annual gas consumption: {np.round(gasCons.sum()/1000)} MWh")
-            print(f"Annual cost: {np.round(self.totalCost.value/1e6, 3)} M$")
-            print(f"Annual operational emissions: {np.round(self.totalEmissions.value/1e6, 2)} MtonCO2")
-            print(f"LCOE (Electricity): {np.round(self.LCOE.value, 3)} $/kWh")
-            print(f"LCOH (Heat): {np.round(self.LCOH.value, 3)} $/kWh")
-            print(f"Carbon Intensity of Electricity: {np.round(self.CIE, 3)} kgCO2/kWhe")
-            print(f"Carbon Intensity of Heat: {np.round(self.CIH, 3)} kgCO2/kWhth")
-        print("")
+            print("Components:")
+            print(" | ".join([c.name for c in self.components]))
+            print(f"Annual loads : power {np.round(self.powerLoad.sum()/1000)} MWh | heat{np.round(self.heatLoad.sum()/1000)} MWh")
+            print(f"Annual consumptions : power {np.round(pwrCons.sum()/1000)} MWh | net power {np.round(netPwrCons.sum()/1000)} MWh | gas {np.round(gasCons.sum()/1000)} MWh")
+            print(f"Annual cost : {np.round(self.totalCost.value/1e6, 3)} M$")
+            print(f"Annual operational emissions : {np.round(self.totalEmissions.value/1e6, 2)} MtonCO2")
+            print(f"LCOE (Energy) : {np.round(self.LCOenergy, 3)} $/kWh")
+            print(f"Carbon Intensity of Energy : {np.round(self.CIenergy, 3)} kgCO2/kWh")
+
         if detailed:
             print(f"Runs from {self.timeIndex[0]} to {self.timeIndex[-1]}")
-            print(f"Annual power load: {np.round(self.powerLoad.sum()/1000)} MWh")
-            print(f"Annual heat load: {np.round(self.heatLoad.sum()/1000)} MWh")
-            print(f"Average supply power price: {np.round(self.powerPrice.mean(), 3)} $/kWh")
-            print(f"Average supply gas price: {np.round(self.gasPrice.mean(), 3)} $/kWh")
-            print(f"Average supply power emissions: {np.round(self.gridMarginalEmissions.mean(), 3)} kgCO2/kWhe")
-            print(f"Average supply gas emissions: {np.round(self.gasMarginalEmissions.mean(), 3)} kgCO2/kWhth")
-            if self._status == "optimal":
-                print(f"Annualized capex: {np.round(self.annualizedCapex.value/1e6, 3)} M$")
-                print(f"Power opex: {np.round(self.powerOpex.value/1e6, 3)} M$")
-                print(f"Gas opex: {np.round(self.gasOpex.value/1e6, 3)} M$")
-                print(f"Total power emissions: {np.round(self.powerOperationalEmissions.value.sum()/1e6, 2)} MtonCO2")
-                print(f"Total gas emissions: {np.round(self.gasOperationalEmissions.value.sum()/1e6, 2)} MtonCO2")
+            for c in self.components:
+                c.describe()
 
     def _pivot(self, timeSeries):
         df = pd.DataFrame(timeSeries, index=self.timeIndex)
