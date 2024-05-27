@@ -584,10 +584,11 @@ class Battery(Component):
         powerInput = powerInputCharge - parameters['effDischarge']*powerInputDischarge # kWh, positive when it charges, negative when it discharges
         soc = cp.Variable(n_timesteps+1, nonneg=True) # kWh
         energyCapacity = cp.Variable(nonneg=True) # kWh
-        variables = [powerInputCharge, powerInputDischarge, soc, energyCapacity]
+        cycles = cp.sum(parameters['effCharge']*powerInputCharge + powerInputDischarge)/(2*energyCapacity)
+        variables = [powerInputCharge, powerInputDischarge, soc, energyCapacity, cycles]
         # Save variables in a dictionary
         variablesDict = {'powerInput': powerInput, 'powerInputCharge': powerInputCharge, 'powerInputDischarge': powerInputDischarge,
-                         'soc': soc, 'energyCapacity': energyCapacity}
+                         'soc': soc, 'energyCapacity': energyCapacity, 'cycles':cycles}
         # Constraints
         constraints = []
         constraints += [-powerInput <= parameters['maxDischargeRate'] * dt * energyCapacity] # maxDischargeRate is defined for an hour
