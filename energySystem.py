@@ -132,7 +132,7 @@ class System:
             if component.typeTransfer == 'ElectricityGeneration':
                 self.powerGeneration = self.powerGeneration - component.powerConsumption
             elif component.typeTransfer == 'Battery':
-                self.powerConsumption = self.powerConsumption + component._variablesDict['powerInputCharge'] - component._variablesDict['powerInputDischarge']
+                self.powerConsumption = self.powerConsumption + component._variablesDict['powerInputCharge'] - component._parameters['effDischarge']*component._variablesDict['powerInputDischarge']
             else:
                 self.powerConsumption = self.powerConsumption + component.powerConsumption
             self.gasConsumption = self.gasConsumption + component.gasConsumption
@@ -170,6 +170,23 @@ class System:
         # build model
         self._model = cp.Problem(self._objective, self._constraints)
     
+    def _initialize_parameters(self):
+        for component in self.components:
+            if component.typeTransfer == 'ElectricityGeneration':
+                for k, v in component._parameters.items():
+                    if k=='capacityPrice':
+                        component._parameters['capacityPrice'].value = component._parameterValues['capacityPrice']
+                    elif k=='ppaPrice':
+                        component._parameters['ppaPrice'].value = component._parameterValues['ppaPrice']
+            else:
+                for k, v in component._parameters.items():
+                    v.value = component._parameterValues[k]
+    
+    def getModel(self, objective='cost', emissionsCap=None, costCap=None):
+        self._build_model(objective, emissionsCap, costCap)
+        self._initialize_parameters()
+        return self._model
+    
     def _computeMetrics(self):
         # how to do LCOelec, LCOheat and same for emissions ?
         if self._status != "optimal":
@@ -181,6 +198,7 @@ class System:
     
     def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False):
         self._build_model(objective, emissionsCap, costCap)
+        self._initialize_parameters()
         self._model.solve(solver=solver, verbose=verbose)
         self._status = self._model._status
         for component in self.components:
@@ -345,10 +363,11 @@ class System:
 
 class Component:
 
-    def __init__(self, name, typeTransfer=None, parameters=None, variables=None, variablesDict=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
+    def __init__(self, name, typeTransfer=None, parameters=None, parameterValues=None, variables=None, variablesDict=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
         self.name = name
         self.typeTransfer = typeTransfer
         self._parameters = parameters
+        self._parameterValues = parameterValues
         self._variables = variables
         self._variablesDict = variablesDict
         self._constraints = constraints
@@ -363,7 +382,7 @@ class Component:
         print(f"Component: {self.name}")
         if self._parameters is not None:
             for k, v in self._parameters.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {getValue(v)}")
     
     def setOpex(self, powerPrice, gasPrice):
         if self.opex is None:
@@ -389,7 +408,8 @@ class NaturalGasBoiler(Component):
         name = 'NaturalGasBoiler'
         typeTransfer = 'GasToHeat'
         # Parameters
-        parameters = {'capacityPrice': capacityPrice, 'eff': eff}
+        parameters = {'capacityPrice': cp.Parameter(nonneg=True, name='NaturalGasBoilercapacityPrice'), 'eff': cp.Parameter(nonneg=True, name='NaturalGasBoilereff')}
+        parameterValues = {'capacityPrice': capacityPrice, 'eff': eff}
         # Variables
         gasInput = cp.Variable(n_timesteps, nonneg=True) # kWh
         capacity = cp.Variable(nonneg=True) # kW
@@ -397,23 +417,23 @@ class NaturalGasBoiler(Component):
         # Save variables in a dictionary
         variablesDict = {'gasInput': gasInput, 'capacity': capacity}
         # Derived quantities
-        heatOutput = eff*gasInput # kWh
+        heatOutput = parameters['eff']*gasInput # kWh
         # Constraints
         constraints = [heatOutput <= capacity*dt]
         # Consumption
         powerConsumption = np.zeros(n_timesteps)
         gasConsumption = gasInput
         # Cost
-        capex = capacity * capacityPrice # $
+        capex = capacity * parameters['capacityPrice'] # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, parameterValues, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
     def describe(self):
         print(f"Component: {self.name}")
         if self._parameters is not None:
             for k, v in self._parameters.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {getValue(v)}")
         print(f"    Optimal capacity: {np.round(self._variablesDict['capacity'].value)} kW")
 
 
@@ -434,7 +454,8 @@ class HeatPump(Component):
         name = 'HeatPump'
         typeTransfer = 'ElectricityToHeat'
         # Parameters
-        parameters = {'capacityPrice': capacityPrice, 'COP': COP}
+        parameters = {'capacityPrice': cp.Parameter(nonneg=True, name='HeatPumpcapacityPrice'), 'COP': cp.Parameter(nonneg=True, name='HeatPumpCOP')}
+        parameterValues = {'capacityPrice': capacityPrice, 'COP': COP}
         # Variables
         powerInput = cp.Variable(n_timesteps, nonneg=True) # kWh
         capacity = cp.Variable(nonneg=True) # kW
@@ -442,23 +463,23 @@ class HeatPump(Component):
         # Save variables in a dictionary
         variablesDict = {'powerInput': powerInput, 'capacity': capacity}
         # Derived quantities
-        heatOutput = COP * powerInput # kWh
+        heatOutput = parameters['COP'] * powerInput # kWh
         # Constraints
         constraints = [heatOutput <= capacity * dt, cp.abs(heatOutput[1:] - heatOutput[:-1]) / dt <= ramp_rate * capacity * dt]
         # Consumption
         powerConsumption = powerInput
         gasConsumption = np.zeros(n_timesteps)
         # Cost
-        capex = capacity * capacityPrice # $
+        capex = capacity * parameters['capacityPrice'] # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, parameterValues, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
     def describe(self):
         print(f"Component: {self.name}")
         if self._parameters is not None:
             for k, v in self._parameters.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {getValue(v)}")
         print(f"    Optimal capacity: {np.round(self._variablesDict['capacity'].value)} kW")
 
 
@@ -478,7 +499,8 @@ class ElectricBoiler(Component):
         name = 'ElectricBoiler'
         typeTransfer = 'ElectricityToHeat'
         # Parameters
-        parameters = {'capacityPrice': capacityPrice, 'eff': eff}
+        parameters = {'capacityPrice': cp.Parameter(nonneg=True, name='ElectricBoilercapacityPrice'), 'eff': cp.Parameter(nonneg=True, name='ElectricBoilereff')}
+        parameterValues = {'capacityPrice': capacityPrice, 'eff': eff}
         # Variables
         powerInput = cp.Variable(n_timesteps, nonneg=True) # kWh
         capacity = cp.Variable(nonneg=True) # kW
@@ -486,23 +508,23 @@ class ElectricBoiler(Component):
         # Save variables in a dictionary
         variablesDict = {'powerInput': powerInput, 'capacity': capacity}
         # Derived quantities
-        heatOutput = eff * powerInput # kWh
+        heatOutput = parameters['eff'] * powerInput # kWh
         # Constraints
         constraints = [heatOutput <= capacity * dt]
         # Consumption
         powerConsumption = powerInput
         gasConsumption = np.zeros(n_timesteps)
         # Cost
-        capex = capacity * capacityPrice # $
+        capex = capacity * parameters['capacityPrice'] # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, parameterValues, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
     def describe(self):
         print(f"Component: {self.name}")
         if self._parameters is not None:
             for k, v in self._parameters.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {getValue(v)}")
         print(f"    Optimal capacity: {np.round(self._variablesDict['capacity'].value)} kW")
 
 
@@ -547,13 +569,19 @@ class Battery(Component):
 
         typeTransfer = 'Battery'
         # Parameters
-        parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal,
+        parameters = {'socMin': cp.Parameter(nonneg=True, name='BatterysocMin'), 'socMax': cp.Parameter(nonneg=True, name='BatterysocMax'),
+                      'socInitial': cp.Parameter(nonneg=True, name='BatterysocInitial'), 'socFinal': cp.Parameter(nonneg=True, name='BatterysocFinal'),
+                      'maxDischargeRate': cp.Parameter(nonneg=True, name='BatterymaxDischargeRate'),
+                      'maxChargeRate': cp.Parameter(nonneg=True, name='BatterymaxChargeRate'),
+                      'capacityPrice': cp.Parameter(nonneg=True, name='BatterycapacityPrice'), 'effCharge': cp.Parameter(nonneg=True, name='BatteryeffCharge'),
+                      'effDischarge': cp.Parameter(nonneg=True, name='BatteryeffDischarge')}
+        parameterValues = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal,
                       'maxDischargeRate': maxDischargeRate, 'maxChargeRate': maxChargeRate, 'capacityPrice': capacityPrice,
                       'effCharge': effCharge, 'effDischarge': effDischarge}
         # Variables
         powerInputCharge = cp.Variable(n_timesteps, nonneg=True) # kWh
         powerInputDischarge = cp.Variable(n_timesteps, nonneg=True)
-        powerInput = powerInputCharge - powerInputDischarge # kWh, positive when it charges, negative when it discharges
+        powerInput = powerInputCharge - parameters['effDischarge']*powerInputDischarge # kWh, positive when it charges, negative when it discharges
         soc = cp.Variable(n_timesteps+1, nonneg=True) # kWh
         energyCapacity = cp.Variable(nonneg=True) # kWh
         variables = [powerInputCharge, powerInputDischarge, soc, energyCapacity]
@@ -562,29 +590,29 @@ class Battery(Component):
                          'soc': soc, 'energyCapacity': energyCapacity}
         # Constraints
         constraints = []
-        constraints += [-powerInput <= maxDischargeRate * dt * energyCapacity] # maxDischargeRate is defined for an hour
-        constraints += [powerInput <= maxChargeRate * dt * energyCapacity] # maxChargeRate is defined for an hour
-        constraints += [soc >= socMin * energyCapacity]
-        constraints += [soc <= socMax * energyCapacity]
-        constraints += [soc[0] == socInitial * energyCapacity]
-        constraints += [soc[-1] == socFinal * energyCapacity]
-        constraints += [soc[1:] == soc[:-1] + effCharge*powerInputCharge - powerInputDischarge/effDischarge] # added efficiency
+        constraints += [-powerInput <= parameters['maxDischargeRate'] * dt * energyCapacity] # maxDischargeRate is defined for an hour
+        constraints += [powerInput <= parameters['maxChargeRate'] * dt * energyCapacity] # maxChargeRate is defined for an hour
+        constraints += [soc >= parameters['socMin'] * energyCapacity]
+        constraints += [soc <= parameters['socMax'] * energyCapacity]
+        constraints += [soc[0] == parameters['socInitial'] * energyCapacity]
+        constraints += [soc[-1] == parameters['socFinal'] * energyCapacity]
+        constraints += [soc[1:] == soc[:-1] + parameters['effCharge']*powerInputCharge - powerInputDischarge] # added efficiency
         # Consumption
         powerConsumption = powerInput # positive consumption (cost added) when it charges, negative (cost avoided) when it discharges
         gasConsumption = np.zeros(n_timesteps)
         heatOutput = np.zeros(n_timesteps)
         # Cost
-        capex = energyCapacity * capacityPrice # $
+        capex = energyCapacity * parameters['capacityPrice'] # $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, parameterValues, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
 
     def describe(self):
         print(f"Component: {self.name}")
         if self._parameters is not None:
             for k, v in self._parameters.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {getValue(v)}")
         print(f"    Optimal energy capacity: {np.round(self._variablesDict['energyCapacity'].value)} kWh")
         print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self._variablesDict['energyCapacity'].value)} kW")
 
@@ -619,13 +647,16 @@ class ThermalStorage(Component):
         name = 'ThermalStorage'
         typeTransfer = 'Storage'
         # Parameters
-        parameters = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal,
+        parameters = {'socMin': cp.Parameter(nonneg=True), 'socMax': cp.Parameter(nonneg=True), 'socInitial': cp.Parameter(nonneg=True),
+                      'socFinal': cp.Parameter(nonneg=True), 'lossRate': cp.Parameter(nonneg=True), 'energyCapacityPrice': cp.Parameter(nonneg=True),
+                      'powerCapacityPrice': cp.Parameter(nonneg=True), 'effCharge': cp.Parameter(nonneg=True), 'effDischarge': cp.Parameter(nonneg=True)}
+        parameterValues = {'socMin': socMin, 'socMax': socMax, 'socInitial': socInitial, 'socFinal': socFinal,
                       'lossRate': lossRate, 'energyCapacityPrice': energyCapacityPrice, 'powerCapacityPrice': powerCapacityPrice,
                       'effCharge': effCharge, 'effDischarge': effDischarge}
         # Variables
         heatInputCharge = cp.Variable(n_timesteps, nonneg=True) # kWh
         heatInputDischarge = cp.Variable(n_timesteps, nonneg=True) # kWh
-        heatInput = heatInputCharge - heatInputDischarge # kWh, positive when it charges, negative when it discharges
+        heatInput = heatInputCharge - parameters['effDischarge']*heatInputDischarge # kWh, positive when it charges, negative when it discharges
         soc = cp.Variable(n_timesteps + 1, nonneg=True) # kWh
         energyCapacity = cp.Variable(nonneg=True) # kWh
         powerCapacity = cp.Variable(nonneg=True) # kW
@@ -637,27 +668,27 @@ class ThermalStorage(Component):
         constraints = []
         constraints += [-heatInput <= powerCapacity * dt]
         constraints += [heatInput <= powerCapacity * dt]
-        constraints += [soc >= socMin * energyCapacity]
-        constraints += [soc <= socMax * energyCapacity]
-        constraints += [soc[0] == socInitial * energyCapacity]
-        constraints += [soc[-1] == socFinal * energyCapacity]
-        constraints += [soc[1:] == soc[:-1]*(1 - dt*lossRate) + effCharge*heatInputCharge - heatInputDischarge/effDischarge] # added efficiency
+        constraints += [soc >= parameters['socMin'] * energyCapacity]
+        constraints += [soc <= parameters['socMax'] * energyCapacity]
+        constraints += [soc[0] == parameters['socInitial'] * energyCapacity]
+        constraints += [soc[-1] == parameters['socFinal'] * energyCapacity]
+        constraints += [soc[1:] == soc[:-1]*(1 - dt*parameters['lossRate']) + parameters['effCharge']*heatInputCharge - heatInputDischarge] # added efficiency
         # Consumption
         powerConsumption = np.zeros(n_timesteps)
         gasConsumption = np.zeros(n_timesteps)
         heatOutput = - heatInput # load added when it charges (heatInput positive), load avoided when it discharges (heatInput negative)
         # Cost
-        capex = energyCapacity * energyCapacityPrice + powerCapacity * powerCapacityPrice# $
+        capex = energyCapacity * parameters['energyCapacityPrice'] + powerCapacity * parameters['powerCapacityPrice']# $
         CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
 
-        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, parameterValues, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
 
     
     def describe(self):
         print(f"Component: {self.name}")
         if self._parameters is not None:
             for k, v in self._parameters.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {getValue(v)}")
         print(f"    Optimal energy capacity: {np.round(self._variablesDict['energyCapacity'].value)} kWhth")
         print(f"    Optimal heat capacity: {np.round(self._variablesDict['powerCapacity'].value)} kWth")
 
@@ -689,13 +720,15 @@ class PVsystem(Component):
         powerOutput = pvLoadProfile * capacity * dt # kWh
         # Cost and parameter
         if capacityPrice is not None and ppaPrice is None:
-            capex = capacity * capacityPrice # $
+            parameters = {'capacityPrice': cp.Parameter(nonneg=True), 'pvLoadProfile': pvLoadProfile, 'onsite': onsite}
+            capex = capacity * parameters['capacityPrice'] # $
             CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
-            parameters = {'capacityPrice': capacityPrice, 'pvLoadProfile': pvLoadProfile, 'onsite': onsite}
+            parameterValues = {'capacityPrice': capacityPrice, 'pvLoadProfile': pvLoadProfile, 'onsite': onsite}
         elif ppaPrice is not None and capacityPrice is None:
-            capex = cp.sum(powerOutput) * ppaPrice # In this case capex is already the annualized capex
+            parameters = {'ppaPrice': cp.Parameter(nonneg=True), 'pvLoadProfile': pvLoadProfile, 'onsite': onsite}
+            capex = cp.sum(powerOutput) * parameters['ppaPrice'] # In this case capex is already the annualized capex
             CRF = 1
-            parameters = {'ppaPrice': ppaPrice, 'pvLoadProfile': pvLoadProfile, 'onsite': onsite}
+            parameterValues = {'ppaPrice': ppaPrice, 'pvLoadProfile': pvLoadProfile, 'onsite': onsite}
         else:
             raise ValueError("Please provide either a capacity price or a levelized cost of electricity")
         # Constraints
@@ -705,13 +738,13 @@ class PVsystem(Component):
         gasConsumption = np.zeros(n_timesteps)
         heatOutput = np.zeros(n_timesteps)
         
-        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, parameterValues, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
         
     def describe(self):
         print(f"Component: {self.name}")
         if self._parameters is not None:
             for k, v in self._parameters.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {getValue(v)}")
         print(f"    Optimal power capacity: {np.round(self._variablesDict['capacity'].value/1000, 2)} MW")
     
 class Windsystem(Component):
@@ -741,13 +774,15 @@ class Windsystem(Component):
         powerOutput = WindLoadProfile * capacity * dt # kWh
         # Cost and parameter
         if capacityPrice is not None and ppaPrice is None:
-            capex = capacity * capacityPrice # $
+            parameters = {'capacityPrice': cp.Parameter(nonneg=True), 'WindLoadProfile': WindLoadProfile, 'onsite': onsite}
+            capex = capacity * parameters['capacityPrice'] # $
             CRF = discRate * (1 + discRate)**n_years / ((1 + discRate)**n_years - 1)
-            parameters = {'capacityPrice': capacityPrice, 'WindLoadProfile': WindLoadProfile, 'onsite': onsite}
+            parameterValues = {'capacityPrice': capacityPrice, 'WindLoadProfile': WindLoadProfile, 'onsite': onsite}
         elif ppaPrice is not None and capacityPrice is None:
-            capex = cp.sum(powerOutput) * ppaPrice # In this case capex is already the annualized capex
+            parameters = {'ppaPrice': cp.Parameter(nonneg=True), 'WindLoadProfile': WindLoadProfile, 'onsite': onsite}
+            capex = cp.sum(powerOutput) * parameters['ppaPrice'] # In this case capex is already the annualized capex
             CRF = 1
-            parameters = {'ppaPrice': ppaPrice, 'WindLoadProfile': WindLoadProfile, 'onsite': onsite}
+            parameterValues = {'ppaPrice': ppaPrice, 'WindLoadProfile': WindLoadProfile, 'onsite': onsite}
         else:
             raise ValueError("Please provide either a capacity price or a levelized cost of electricity")
         # Constraints
@@ -757,11 +792,11 @@ class Windsystem(Component):
         gasConsumption = np.zeros(n_timesteps)
         heatOutput = np.zeros(n_timesteps)
         
-        super().__init__(name, typeTransfer, parameters, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
+        super().__init__(name, typeTransfer, parameters, parameterValues, variables, variablesDict, constraints, powerConsumption, gasConsumption, heatOutput, capex, CRF)
         
     def describe(self):
         print(f"Component: {self.name}")
         if self._parameters is not None:
             for k, v in self._parameters.items():
-                print(f"    {k}: {v}")
+                print(f"    {k}: {getValue(v)}")
         print(f"    Optimal power capacity: {np.round(self._variablesDict['capacity'].value/1000, 2)} MW")
