@@ -60,7 +60,7 @@ H2BDFC_LIFETIME = 30 # [years]
 TES_EFF_CHARGE = np.sqrt(0.95) # [] Discounted value from rondo. could we use that ? Otherwise it's never gonna be used i think ...
 TES_EFF_DISCHARGE = np.sqrt(0.95) # [] Discounted value from rondo. could we use that ? Otherwise it's never gonna be used i think ...
 TES_LOSS_RATE = 0 # [1/h] TODO: Find this value.
-TES_ECAPA_PRICE = 156 # [$/kWhth] # I think it is 156 but I may be wrong !
+TES_ECAPA_PRICE = 5 # [$/kWhth] # I think it is 156 but I may be wrong !
 TES_PCAPA_PRICE = 1466 # [$/kWth]
 TES_LIFETIME = 34 # [years]
 
