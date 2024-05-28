@@ -109,7 +109,14 @@ class System:
         for component in self.components:
             if component.name == name:
                 return component
-        return None
+        return "not found"
+    
+    def getComponentVarValue(self, componentName, variableName):
+        comp = self.getComponent(componentName)
+        if comp != "not found":
+            return getValue(comp._variablesDict[variableName])
+        else:
+            return 0
     
     def _build_model(self, objective, emissionsCap=None, costCap=None):
         # initialize variables and constraints
@@ -357,6 +364,63 @@ class System:
         axs[-1, 1].set_xticklabels(axs[-1, 1].get_xticklabels(), rotation=60)
         plt.tight_layout()
         return plt.gca()
+    
+    def saveResults(self, directory):
+        if self._status != "optimal":
+            print("Model not solved")
+            return False
+        pwrCons = getValue(self.powerConsumption)
+        netPwrCons = getValue(self.netPowerConsumption)
+        gasCons = getValue(self.gasConsumption)
+        name = self.name
+        rows = ["Power Load (MWh/year)",
+                "Heat Load (MWh/year)",
+                "Power Consumption (MWh/year)",
+                "Net Power Consumption (MWh/year)",
+                "Gas Consumption (MWh/year)",
+                "Total Cost (M$/year)",
+                "Operational Emissions (MtonCO2/year)",
+                "LCOE (Energy) ($/kWh)",
+                "CIE (Energy) (kgCO2/kWh)",
+                "Gas Boiler Capacity (MW)",
+                "Heat Pump Capacity (MW)",
+                "Electric Boiler Capacity (MW)",
+                "Battery Capacity (MWh)",
+                "Thermal Storage Energy Capacity (MWh)",
+                "Thermal Storage Power Capacity (MW)",
+                "PV System Capacity (MW)",
+                "Wind System Capacity (MW)",
+                "Battery Cycles (cycles/year)"]
+        values = [np.round(self.powerLoad.sum()/1e3, 3),
+                np.round(self.heatLoad.sum()/1e3, 3),
+                np.round(pwrCons.sum()/1e3, 3),
+                np.round(netPwrCons.sum()/1e3, 3),
+                np.round(gasCons.sum()/1e3, 3),
+                np.round(self.totalCost.value/1e6, 3),
+                np.round(self.totalEmissions.value/1e6, 2),
+                np.round(self.LCOenergy, 3),
+                np.round(self.CIenergy, 3),
+                np.round(self.getComponentVarValue('NaturalGasBoiler', 'capacity')/1e3, 3),
+                np.round(self.getComponentVarValue('HeatPump', 'capacity')/1e3, 3),
+                np.round(self.getComponentVarValue('ElectricBoiler', 'capacity')/1e3, 3),
+                np.round(self.getComponentVarValue('Battery', 'capacity')/1e3, 3),
+                np.round(self.getComponentVarValue('ThermalStorage', 'energyCapacity')/1e3, 3),
+                np.round(self.getComponentVarValue('ThermalStorage', 'powerCapacity')/1e3, 3),
+                np.round(self.getComponentVarValue('PVsystem', 'capacity')/1e3, 3),
+                np.round(self.getComponentVarValue('Windsystem', 'capacity')/1e3, 3),
+                np.round(self.getComponentVarValue('Battery', 'cycles'), 3)]
+        df = pd.DataFrame(index=rows)
+        df.index.name = 'Attributes'
+        df['Values'] = values
+        df.to_csv(directory / f"metrics.csv")
+        heat = self.getHeatDataFrame()
+        power = self.getPowerDataFrame()
+        heat.to_csv(directory / f"heat.csv")
+        power.to_csv(directory / f"power.csv")
+        ax = self.plotHeatmaps()
+        fig = ax.figure
+        fig.savefig(directory / f"heatmaps.png")
+        plt.close(fig)
     
     def compare(self):
         raise NotImplementedError
