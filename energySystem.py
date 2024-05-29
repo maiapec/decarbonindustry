@@ -372,7 +372,6 @@ class System:
         pwrCons = getValue(self.powerConsumption)
         netPwrCons = getValue(self.netPowerConsumption)
         gasCons = getValue(self.gasConsumption)
-        name = self.name
         rows = ["Power Load (MWh/year)",
                 "Heat Load (MWh/year)",
                 "Power Consumption (MWh/year)",
@@ -403,12 +402,12 @@ class System:
                 np.round(self.getComponentVarValue('NaturalGasBoiler', 'capacity')/1e3, 3),
                 np.round(self.getComponentVarValue('HeatPump', 'capacity')/1e3, 3),
                 np.round(self.getComponentVarValue('ElectricBoiler', 'capacity')/1e3, 3),
-                np.round(self.getComponentVarValue('Battery', 'capacity')/1e3, 3),
+                np.round(self.getComponentVarValue('Lithium Ion Battery', 'energyCapacity')/1e3, 3),
                 np.round(self.getComponentVarValue('ThermalStorage', 'energyCapacity')/1e3, 3),
                 np.round(self.getComponentVarValue('ThermalStorage', 'powerCapacity')/1e3, 3),
                 np.round(self.getComponentVarValue('PVsystem', 'capacity')/1e3, 3),
                 np.round(self.getComponentVarValue('Windsystem', 'capacity')/1e3, 3),
-                np.round(self.getComponentVarValue('Battery', 'cycles'), 3)]
+                np.round(self.getComponentVarValue('Lithium Ion Battery', 'cycles'), 3)]
         df = pd.DataFrame(index=rows)
         df.index.name = 'Attributes'
         df['Values'] = values
