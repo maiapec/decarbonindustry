@@ -11,9 +11,9 @@ CIE (Energy) (kgCO2/kWh),0.114
 Gas Boiler Capacity (MW),5.587
 Heat Pump Capacity (MW),3.035
 Electric Boiler Capacity (MW),0.503
-Battery Capacity (MWh),0.0
+Battery Capacity (MWh),1.428
 Thermal Storage Energy Capacity (MWh),14.706
 Thermal Storage Power Capacity (MW),0.902
 PV System Capacity (MW),1.472
 Wind System Capacity (MW),3.889
-Battery Cycles (cycles/year),0.0
+Battery Cycles (cycles/year),353.353
