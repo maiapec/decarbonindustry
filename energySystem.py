@@ -365,6 +365,24 @@ class System:
         plt.tight_layout()
         return plt.gca()
     
+    def plotLoads(self):
+        nc = len(self.components)
+        fig, axs = plt.subplots(2, figsize=(15, 8), dpi=300, sharex='col')
+        cmap = 'coolwarm'
+        # Power Load
+        sns.heatmap(self._pivot(self.powerLoad/self.dt), ax=axs[0], cmap=cmap, cbar_kws={'label': 'kWe'}) # kWh to kW
+        axs[0].set_title('Power Load')
+        axs[0].set_xlabel('')
+        axs[0].set_ylabel('Time')
+        # Heat Load
+        sns.heatmap(self._pivot(self.heatLoad/self.dt), ax=axs[1], cmap=cmap, cbar_kws={'label': 'kWth'}) # kWh to kW
+        axs[1].set_title('Heat Load')
+        axs[1].set_xlabel('Date')
+        axs[1].set_ylabel('Time')
+        axs[1].set_xticklabels(axs[1].get_xticklabels(), rotation=60)
+        plt.tight_layout()
+        return plt.gca()
+    
     def saveResults(self, directory):
         if self._status != "optimal":
             print("Model not solved")

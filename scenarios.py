@@ -288,3 +288,5 @@ def plot_power_and_heat(power, heat, powerConsumers, powerStorage, powerGenerato
     axs[1].legend()
     plt.tight_layout
     return plt.gca()
+
+
