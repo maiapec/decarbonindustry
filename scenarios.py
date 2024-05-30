@@ -35,7 +35,8 @@ def load_site_data(sites):
 def load_prices(directAccess, dt):
     if directAccess:
         df = pd.read_csv(path / "power_grid" / "direct_access.csv")
-    df = pd.read_csv(path / "power_grid" / "power_price_B20.csv")
+    else :
+        df = pd.read_csv(path / "power_grid" / "power_price_B20.csv")
     energyPricePower = df["energyPrice"].to_numpy() # $/kWh
     sellBackPrice = np.full(len(energyPricePower), DEFAULT.SELL_BACK_PRICE) # $/kWh
     powerDemandFee = [
