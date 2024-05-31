@@ -185,11 +185,19 @@ def save_results(system, directory):
         os.makedirs(directory)
     system.saveResults(directory)
 
-def run_scenario(system, scenario):
+def run_scenario(system, scenario, emissionsCap=None, costCap=None, save=True):
     if scenario == "MinimizeCost":
         system.solve(objective="cost", solver="MOSEK")
-    directory = path / "results" / (system.name + "_" + scenario)
-    save_results(system, directory)
+    elif scenario == "MinimizeEmissions":
+        system.solve(objective="emissions", solver="MOSEK")
+    elif scenario == "MinimizeCostWithEmissionsCap":
+        system.solve(objective="cost", emissionsCap=emissionsCap, solver="MOSEK")
+    elif scenario == "MinimizeEmissionsWithCostCap":
+        system.solve(objective="emissions", costCap=costCap, solver="MOSEK")
+        
+    if save:
+        directory = path / "results" / (system.name + "_" + scenario)
+        save_results(system, directory)
     return system._status
 
 def load_power_and_heat(systemName, obj):

@@ -27,6 +27,7 @@ def getValue(variable):
     else:
         return variable
 
+
 class System:
 
     def __init__(self, name, components=None, timeIndex=None, powerLoad=None, heatLoad=None, powerPrice=None, sellBackPrice=None, powerDemandFee=None, gasPrice=None, gridMarginalEmissions=None, gasMarginalEmissions=None):
@@ -442,6 +443,7 @@ class System:
     def compare(self):
         raise NotImplementedError
 
+
 class Component:
 
     def __init__(self, name, typeTransfer=None, parameters=None, parameterValues=None, variables=None, variablesDict=None, constraints=None, powerConsumption=None, gasConsumption=None, heatOutput=None, capex=None, CRF=None):
@@ -699,7 +701,6 @@ class Battery(Component):
         print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self._variablesDict['energyCapacity'].value)} kW")
 
 
-# Added power capacity to variables to optimize
 class ThermalStorage(Component):
 
     def __init__(self, n_timesteps=None, dt=None, energyCapacityPrice=None, powerCapacityPrice=None,
@@ -829,6 +830,7 @@ class PVsystem(Component):
                 print(f"    {k}: {getValue(v)}")
         print(f"    Optimal power capacity: {np.round(self._variablesDict['capacity'].value/1000, 2)} MW")
     
+
 class Windsystem(Component):
 
     def __init__(self, n_timesteps=None, dt=None, WindLoadProfile=None, capacityPrice=None, ppaPrice=None,
