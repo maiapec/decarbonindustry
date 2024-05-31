@@ -204,10 +204,13 @@ class System:
             self.LCOenergy = getValue(self.totalCost) / energyCons.sum()
             self.CIenergy = getValue(self.totalEmissions) / energyCons.sum()
     
-    def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False):
+    def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False, max_iter=None):
         self._build_model(objective, emissionsCap, costCap)
         self._initialize_parameters()
-        self._model.solve(solver=solver, verbose=verbose)
+        if solver=='MOSEK' and max_iter is not None:
+            self._model.solve(solver=solver, verbose=verbose, mosek_params={'MSK_IPAR_INTPNT_MAX_ITERATIONS': max_iter})
+        else:
+            self._model.solve(solver=solver, verbose=verbose)
         self._status = self._model._status
         for component in self.components:
             component.setOpex(self.powerPrice, self.gasPrice)
@@ -368,7 +371,7 @@ class System:
     
     def plotLoads(self):
         nc = len(self.components)
-        fig, axs = plt.subplots(2, figsize=(15, 8), dpi=300, sharex='col')
+        fig, axs = plt.subplots(2, figsize=(15, 6), dpi=300, sharex='col')
         cmap = 'coolwarm'
         # Power Load
         sns.heatmap(self._pivot(self.powerLoad/self.dt), ax=axs[0], cmap=cmap, cbar_kws={'label': 'kWe'}) # kWh to kW
@@ -381,6 +384,10 @@ class System:
         axs[1].set_xlabel('Date')
         axs[1].set_ylabel('Time')
         axs[1].set_xticklabels(axs[1].get_xticklabels(), rotation=60)
+        #To remove the ticks uncomment the following lines
+        #axs[0].set_yticks([])
+        #plt.xticks([])
+        #plt.yticks([])
         plt.tight_layout()
         return plt.gca()
     
@@ -701,6 +708,7 @@ class Battery(Component):
         print(f"    Optimal power capacity: {np.round(self._parameters['maxChargeRate'] * self._variablesDict['energyCapacity'].value)} kW")
 
 
+# Added power capacity to variables to optimize
 class ThermalStorage(Component):
 
     def __init__(self, n_timesteps=None, dt=None, energyCapacityPrice=None, powerCapacityPrice=None,
@@ -830,7 +838,6 @@ class PVsystem(Component):
                 print(f"    {k}: {getValue(v)}")
         print(f"    Optimal power capacity: {np.round(self._variablesDict['capacity'].value/1000, 2)} MW")
     
-
 class Windsystem(Component):
 
     def __init__(self, n_timesteps=None, dt=None, WindLoadProfile=None, capacityPrice=None, ppaPrice=None,

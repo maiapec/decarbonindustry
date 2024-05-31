@@ -9,8 +9,6 @@ import numpy as np
 from energySystem import System, NaturalGasBoiler, HeatPump, Battery, ThermalStorage, PVsystem, Windsystem, ElectricBoiler
 import layouts.default_values as DEFAULT
 
-sns.set_context(context="notebook")
-plt.rcParams["figure.dpi"] = 300
 path = Path('.') / "layouts"
 colors = {'HeatPump': 'C0', 'Power Load': 'C7', 'Lithium Ion Battery': 'C4', 'Total Power Consumption': 'black', 'PVsystem': 'C1', 'Windsystem':'C2', '':'C4',
           'NaturalGasBoiler' : 'C5', 'ElectricBoiler': 'C6', 'Heat Load': 'C3', 'ThermalStorage': 'C4', 'Total Heat Consumption': 'black',
@@ -185,15 +183,15 @@ def save_results(system, directory):
         os.makedirs(directory)
     system.saveResults(directory)
 
-def run_scenario(system, scenario, emissionsCap=None, costCap=None, save=True):
+def run_scenario(system, scenario, emissionsCap=None, costCap=None, save=True, verbose=False):
     if scenario == "MinimizeCost":
-        system.solve(objective="cost", solver="MOSEK")
+        system.solve(objective="cost", solver="MOSEK", verbose=verbose, max_iter=1000)
     elif scenario == "MinimizeEmissions":
-        system.solve(objective="emissions", solver="MOSEK")
+        system.solve(objective="emissions", solver="MOSEK", verbose=verbose, max_iter=1000)
     elif scenario == "MinimizeCostWithEmissionsCap":
-        system.solve(objective="cost", emissionsCap=emissionsCap, solver="MOSEK")
+        system.solve(objective="cost", emissionsCap=emissionsCap, solver="MOSEK", verbose=verbose, max_iter=1000)
     elif scenario == "MinimizeEmissionsWithCostCap":
-        system.solve(objective="emissions", costCap=costCap, solver="MOSEK")
+        system.solve(objective="emissions", costCap=costCap, solver="MOSEK", verbose=verbose, max_iter=1000)
         
     if save:
         directory = path / "results" / (system.name + "_" + scenario)
@@ -288,13 +286,13 @@ def plot_power_and_heat(power, heat, powerConsumers, powerStorage, powerGenerato
     power_neg.plot.area(color=colors, ax=axs[0])
     power['Total Power Consumption'].plot(color=colors, ax=axs[0])
     axs[0].set_ylabel('Power Consumption(kW)')
-    axs[0].legend()
+    axs[0].legend(bbox_to_anchor=(1, 1))
     heat_pos.plot.area(color=colors, ax=axs[1])
     for heatSto in heatStorage:
         heat_sto_neg[heatSto].plot.area(color=colors[heatSto], label='', ax=axs[1])
     heat['Heat Load'].plot(color=colors['Heat Load'], ax=axs[1])
     axs[1].set_ylabel('Heat Generation(kW)')
-    axs[1].legend()
+    axs[1].legend(bbox_to_anchor=(1, 0.8))
     plt.tight_layout
     return plt.gca()
 
