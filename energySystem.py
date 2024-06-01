@@ -64,6 +64,8 @@ class System:
         self.CIenergy = None # Carbon Intensity of Energy
         self.CIelectricity = None # Carbon Intensity of Energy
         self.CIheat = None # Carbon Intensity of Heat
+        self.costCap = None
+        self.emissionsCap = None
         # optimization model
         self._variables = None
         self._constraints = None
@@ -169,16 +171,18 @@ class System:
             # minimize cost subject to total emissions cap
             self._objective = cp.Minimize(self.totalCost)
             if emissionsCap is not None:
-                self._constraints += [self.totalEmissions <= emissionsCap]
+                self.emissionsCap = cp.Parameter(nonneg=True, name='emissionsCap')
+                self._constraints += [self.totalEmissions <= self.emissionsCap]
         elif objective == 'emissions':
             # minimize total emissions subject to cost cap
             self._objective = cp.Minimize(self.totalEmissions)
             if costCap is not None:
-                self._constraints += [self.totalCost <= costCap]
+                self.costCap = cp.Parameter(nonneg=True, name='costCap')
+                self._constraints += [self.totalCost <= self.costCap]
         # build model
         self._model = cp.Problem(self._objective, self._constraints)
     
-    def _initialize_parameters(self):
+    def _initialize_parameters(self, emissionsCap=None, costCap=None):
         for component in self.components:
             if component.typeTransfer == 'ElectricityGeneration':
                 for k, v in component._parameters.items():
@@ -189,10 +193,14 @@ class System:
             else:
                 for k, v in component._parameters.items():
                     v.value = component._parameterValues[k]
+        if emissionsCap is not None:
+            self.emissionsCap.value = emissionsCap
+        if costCap is not None:
+            self.costCap.value = costCap
     
     def getModel(self, objective='cost', emissionsCap=None, costCap=None):
         self._build_model(objective, emissionsCap, costCap)
-        self._initialize_parameters()
+        self._initialize_parameters(emissionsCap, costCap)
         return self._model
     
     def _computeMetrics(self):
@@ -206,7 +214,7 @@ class System:
     
     def solve(self, objective='cost', emissionsCap=None, costCap=None, solver=cp.CLARABEL, verbose=False, max_iter=None):
         self._build_model(objective, emissionsCap, costCap)
-        self._initialize_parameters()
+        self._initialize_parameters(emissionsCap, costCap)
         if solver=='MOSEK' and max_iter is not None:
             self._model.solve(solver=solver, verbose=verbose, mosek_params={'MSK_IPAR_INTPNT_MAX_ITERATIONS': max_iter})
         else:
