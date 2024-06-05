@@ -66,6 +66,8 @@ class System:
         self.CIheat = None # Carbon Intensity of Heat
         self.costCap = None
         self.emissionsCap = None
+        self.powerLF = None
+        self.heatLF = None
         # optimization model
         self._variables = None
         self._constraints = None
@@ -205,6 +207,8 @@ class System:
     
     def _computeMetrics(self):
         # how to do LCOelec, LCOheat and same for emissions ?
+        self.powerLF = (self.powerLoad.sum()) / (self.powerLoad.max() * len(self.timeIndex))
+        self.heatLF = (self.heatLoad.sum()) / (self.heatLoad.max() * len(self.timeIndex))
         if self._status != "optimal":
             print("Model not solved")
         else:  
@@ -234,6 +238,7 @@ class System:
             print("Components:")
             print(" | ".join([c.name for c in self.components]))
             print(f"Annual loads : power {np.round(self.powerLoad.sum()/1000)} MWh | heat {np.round(self.heatLoad.sum()/1000)} MWh")
+            print(f"Annual load factors : power {np.round(self.powerLF*100, 2)} % | heat {np.round(self.heatLF*100, 2)} %")
             print(f"Annual consumptions : power {np.round(pwrCons.sum()/1000)} MWh | net power {np.round(netPwrCons.sum()/1000)} MWh | gas {np.round(gasCons.sum()/1000)} MWh")
             print(f"Annual cost : {np.round(self.totalCost.value/1e6, 3)} M$")
             print(f"Annual operational emissions : {np.round(self.totalEmissions.value/1e6, 2)} MtonCO2")
@@ -408,6 +413,8 @@ class System:
         gasCons = getValue(self.gasConsumption)
         rows = ["Power Load (MWh/year)",
                 "Heat Load (MWh/year)",
+                "Power Load Factor (%)",
+                "Heat Load Factor (%)",
                 "Power Consumption (MWh/year)",
                 "Net Power Consumption (MWh/year)",
                 "Gas Consumption (MWh/year)",
@@ -426,6 +433,8 @@ class System:
                 "Battery Cycles (cycles/year)"]
         values = [np.round(self.powerLoad.sum()/1e3, 3),
                 np.round(self.heatLoad.sum()/1e3, 3),
+                np.round(self.powerLF*100, 2),
+                np.round(self.heatLF*100, 2),
                 np.round(pwrCons.sum()/1e3, 3),
                 np.round(netPwrCons.sum()/1e3, 3),
                 np.round(gasCons.sum()/1e3, 3),
