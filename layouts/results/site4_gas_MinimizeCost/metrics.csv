@@ -1,6 +1,8 @@
 Attributes,Values
 Power Load (MWh/year),10000.0
 Heat Load (MWh/year),29389.529
+Power Load Factor (%),25.18
+Heat Load Factor (%),25.74
 Power Consumption (MWh/year),10000.0
 Net Power Consumption (MWh/year),10000.0
 Gas Consumption (MWh/year),30936.346
