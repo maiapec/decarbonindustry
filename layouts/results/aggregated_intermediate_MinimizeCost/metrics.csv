@@ -1,0 +1,21 @@
+Attributes,Values
+Power Load (MWh/year),50000.0
+Heat Load (MWh/year),146677.967
+Power Load Factor (%),44.99
+Heat Load Factor (%),48.36
+Power Consumption (MWh/year),51482.131
+Net Power Consumption (MWh/year),-906.493
+Gas Consumption (MWh/year),154397.86
+Total Cost (M$/year),13.152
+Operational Emissions (MtonCO2/year),40.65
+LCOE (Energy) ($/kWh),0.067
+CIE (Energy) (kgCO2/kWh),0.207
+Gas Boiler Capacity (MW),34.626
+Heat Pump Capacity (MW),0.0
+Electric Boiler Capacity (MW),0.0
+Battery Capacity (MWh),10.696
+Thermal Storage Energy Capacity (MWh),0.0
+Thermal Storage Power Capacity (MW),0.0
+PV System Capacity (MW),10.462
+Wind System Capacity (MW),8.073
+Battery Cycles (cycles/year),742.618
