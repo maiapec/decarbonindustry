@@ -100,6 +100,56 @@ def build_gas_only_system(name, directAccess=False, site="site1"):
         ))
     return system
 
+def build_intermediate_system(name, directAccess=False, site="site1"):
+    timeIndex, powerLoad, heatLoad, energyPricePower, sellBackPrice, powerDemandFee, energyPriceGas, emissionsPower, emissionsGas, pvuLoad, windLoad, dt = load_data(directAccess, site)
+    n_timesteps = len(timeIndex)
+    system = System(
+        name,
+        timeIndex=timeIndex,
+        powerLoad=powerLoad,
+        heatLoad=heatLoad,
+        powerPrice=energyPricePower,
+        sellBackPrice=sellBackPrice,
+        powerDemandFee=powerDemandFee,
+        gasPrice=energyPriceGas,
+        gridMarginalEmissions=emissionsPower,
+        gasMarginalEmissions=emissionsGas
+    )
+    system.addComponent(NaturalGasBoiler(
+        n_timesteps=n_timesteps,
+        dt=1/4,
+        eff=DEFAULT.GAS_BOILER_EFF,
+        capacityPrice=DEFAULT.GAS_BOILER_CAPA_PRICE,
+        discRate=DEFAULT.DISCOUNT_RATE,
+        n_years=DEFAULT.GAS_BOILER_LIFETIME
+        ))
+    system.addComponent(Battery(
+        n_timesteps=n_timesteps,
+        dt=1/4,
+        capacityPrice=DEFAULT.LION_CAPA_PRICE,
+        maxChargeRate=DEFAULT.LION_MAX_CHARGE_RATE,
+        effCharge=DEFAULT.LION_EFF_CHARGE,
+        effDischarge=DEFAULT.LION_EFF_DISCHARGE,
+        discRate=DEFAULT.DISCOUNT_RATE,
+        n_years=DEFAULT.LION_LIFETIME,
+        name="Lithium Ion Battery"
+        ))
+    system.addComponent(PVsystem(
+        n_timesteps=n_timesteps,
+        dt=1/4,
+        pvLoadProfile=pvuLoad,
+        ppaPrice=DEFAULT.PV_OFFSITE_PPA_PRICE,
+        onsite=False
+        ))
+    system.addComponent(Windsystem(
+        n_timesteps=n_timesteps,
+        dt=1/4,
+        WindLoadProfile=windLoad,
+        ppaPrice=DEFAULT.WIND_OFFSITE_PPA_PRICE,
+        onsite=False
+        ))
+    return system
+
 def build_complete_system(name, directAccess=False, site="site1"):
     timeIndex, powerLoad, heatLoad, energyPricePower, sellBackPrice, powerDemandFee, energyPriceGas, emissionsPower, emissionsGas, pvuLoad, windLoad, dt = load_data(directAccess, site)
     n_timesteps = len(timeIndex)
