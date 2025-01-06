@@ -1,3 +1,3 @@
 # decarbonindustry
 
-**Authors:** Aramis Dufour, Maïa Pecastaings (Department of Civil and Environmental Engineering, Stanford University)
+Energy system optimization for the decarbonization of heat and power loads of industrial facilities.
